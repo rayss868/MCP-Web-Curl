@@ -48,11 +48,13 @@
 
 ---
 
+<a name="overview"></a>
 ## 📝 Overview
 
 **Web-curl** is a powerful tool for fetching and extracting text content from web pages and APIs. Use it as a standalone CLI or as an MCP (Model Context Protocol) server. Web-curl leverages Puppeteer for robust web scraping and supports advanced features such as resource blocking, custom headers, authentication, and Google Custom Search.
 
 ---
+<a name="features"></a>
 
 ## ✨ Features
 
@@ -68,6 +70,7 @@
 
 ---
 
+<a name="architecture"></a>
 ## 🏗️ Architecture
 
 - **CLI & MCP Server**: [`src/index.ts`](src/index.ts:1)  
@@ -78,6 +81,7 @@
 - **Configuration**: Managed via CLI options, environment variables, and tool arguments.
 
 ---
+<a name="installation"></a>
 
 ## ⚙️ MCP Server Configuration Example
 
@@ -128,6 +132,7 @@ Replace `YOUR_GOOGLE_API_KEY` and `YOUR_CX_ID` in the config above.
 
 ---
 
+<a name="installation"></a>
 ## 🛠️ Installation
 
 ```bash
@@ -144,6 +149,7 @@ npm run build
 
 ---
 
+<a name="usage"></a>
 ## 🚀 Usage
 
 ### CLI Usage
@@ -209,6 +215,7 @@ Set the following environment variables for Google Custom Search:
 
 ---
 
+<a name="configuration"></a>
 ## 🧩 Configuration
 
 - **Resource Blocking**: Block images, stylesheets, and fonts for faster scraping.
@@ -219,6 +226,7 @@ Set the following environment variables for Google Custom Search:
 
 ---
 
+<a name="examples"></a>
 ## 💡 Examples
 
 <details>
@@ -269,6 +277,7 @@ Set the following environment variables for Google Custom Search:
 
 ---
 
+<a name="troubleshooting"></a>
 ## 🛠️ Troubleshooting
 
 - **Timeout Errors**: Increase the `timeout` parameter if requests are timing out.
@@ -279,6 +288,7 @@ Set the following environment variables for Google Custom Search:
 
 ---
 
+<a name="tips--best-practices"></a>
 ## 🧠 Tips & Best Practices
 
 <details>
@@ -294,6 +304,7 @@ Set the following environment variables for Google Custom Search:
 
 ---
 
+<a name="contributing--issues"></a>
 ## 🤝 Contributing & Issues
 
 Contributions are welcome! If you want to contribute, fork this repository and submit a pull request.  
@@ -301,6 +312,7 @@ If you find any issues or have suggestions, please open an issue on the reposito
 
 ---
 
+<a name="license--attribution"></a>
 ## 📄 License & Attribution
 
 This project was developed by **Rayss**.  
