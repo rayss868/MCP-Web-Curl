@@ -1,0 +1,35 @@
+{
+  "name": "web-curl",
+  "version": "1.0.0",
+  "description": "A universal CLI and MCP server tool for fetching, extracting, and processing web and API content. Supports resource blocking, authentication, Google Custom Search, and robust automation.",
+  "author": "Rayss",
+  "license": "MIT",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "start": "node build/index.js",
+    "lint": "npx eslint ./src --ext .ts"
+  },
+  "keywords": [
+    "web-scraping",
+    "cli",
+    "mcp",
+    "puppeteer",
+    "automation",
+    "api",
+    "content-extraction"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.4",
+    "@types/node-fetch": "^2.6.12",
+    "node-fetch": "^2.7.0",
+    "puppeteer": "^24.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "typescript": "^5.3.3"
+  }
+}
