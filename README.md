@@ -175,7 +175,7 @@ node build/index.js -o result.json https://example.com
 
 ### MCP Server Usage
 
-Web-curl can be run as an MCP server for integration with Roo Code or other MCP-compatible platforms.
+Web-curl can be run as an MCP server for integration with Roo Code or claude desktop or other MCP-compatible platforms.
 
 #### Exposed Tools
 
