@@ -17,6 +17,8 @@
 
 ## 🎬 Demo Video
 
+<video src="demo/demo.mp4" controls width="600"></video>
+
 [![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](demo/demo.mp4)
 
 <details>
