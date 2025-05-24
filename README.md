@@ -1,3 +1,6 @@
+### Google Custom Search API
+
+Google Custom Search API is free with usage limits (e.g., 100 queries per day for free, with additional queries requiring payment). For full details on quotas, pricing, and restrictions, see the [official documentation](https://developers.google.com/custom-search/v1/overview).
 # Web-curl
 
 ![Web-curl Logo](image/R-Web-Curl.png)
@@ -145,6 +148,17 @@ npm install
 
 # Build the project
 npm run build
+### Puppeteer installation notes
+
+- **Windows:** Just run `npm install`.
+- **Linux:** You must install extra dependencies for Chromium. Run:
+  ```bash
+  sudo apt-get install -y \
+    ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 \
+    libatk1.0-0 libcups2 libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 \
+    libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
+  ```
+  For more details, see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting).
 ```
 
 ---
@@ -175,7 +189,7 @@ node build/index.js -o result.json https://example.com
 
 ### MCP Server Usage
 
-Web-curl can be run as an MCP server for integration with Roo Code or claude desktop or other MCP-compatible platforms.
+Web-curl can be run as an MCP server for integration with Roo Code or other MCP-compatible platforms.
 
 #### Exposed Tools
 
@@ -319,3 +333,4 @@ This project was developed by **Rayss**.
 For questions, improvements, or contributions, please contact the author or open an issue in the repository.
 
 ---
+> **Note:** Google Search API is free with usage limits. For details, see: [Google Custom Search API Overview](https://developers.google.com/custom-search/v1/overview)

@@ -124,7 +124,7 @@ class WebCurlServer {
               },
               maxLength: {
                 type: 'number',
-                description: 'Maximum number of characters to return for content extraction'
+                description: 'Maximum number of characters to return for content extraction (default: 2000 if not provided)'
               },
               startIndex: {
                 type: 'number',
@@ -231,7 +231,7 @@ class WebCurlServer {
         const blockResources = args.blockResources ?? true;
         const resourceTypesToBlock = args.resourceTypesToBlock;
         const timeout = Math.min(args.timeout || 60000, 120000);
-        const maxLength = args.maxLength;
+        const maxLength = args.maxLength !== undefined ? args.maxLength : 2000;
         const startIndex = args.startIndex || 0;
         const headers = args.headers;
         const username = args.username;
