@@ -148,18 +148,21 @@ npm install
 
 # Build the project
 npm run build
+```
+
 ### Puppeteer installation notes
 
 - **Windows:** Just run `npm install`.
 - **Linux:** You must install extra dependencies for Chromium. Run:
+
   ```bash
   sudo apt-get install -y \
     ca-certificates fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 \
     libatk1.0-0 libcups2 libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 \
     libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
   ```
+
   For more details, see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting).
-```
 
 ---
 
@@ -189,14 +192,14 @@ node build/index.js -o result.json https://example.com
 
 ### MCP Server Usage
 
-Web-curl can be run as an MCP server for integration with Roo Code or other MCP-compatible platforms.
+Web-curl can be run as an MCP server for integration with Roo Context or other MCP-compatible environments.
 
 #### Exposed Tools
 
 - **fetch_webpage**: Retrieve text content from a web page
 - **fetch_api**: Make REST API requests
 - **google_search**: Search the web using Google Custom Search API
-- **smart_command**: Accepts natural language commands and auto-routes to the appropriate tool
+- **smart_command**: Automatically parse and execute commands or search queries using the appropriate tool
 
 #### Running as MCP Server
 
@@ -204,7 +207,7 @@ Web-curl can be run as an MCP server for integration with Roo Code or other MCP-
 npm run start
 ```
 
-The server communicates via stdio and exposes tools as defined in [`src/index.ts`](src/index.ts:42).
+The server will communicate via stdin/stdout and expose the tools as defined in [`src/index.ts`](src/index.ts:42).
 
 #### MCP Tool Example (fetch_webpage)
 
@@ -232,8 +235,8 @@ Set the following environment variables for Google Custom Search:
 <a name="configuration"></a>
 ## 🧩 Configuration
 
-- **Resource Blocking**: Block images, stylesheets, and fonts for faster scraping.
-- **Timeouts**: Set navigation and API request timeouts.
+- **Resource Blocking**: Block images, stylesheets, and fonts for faster page loading.
+- **Timeout**: Set navigation and API request timeouts.
 - **Custom Headers**: Pass custom HTTP headers for advanced scenarios.
 - **Authentication**: Supports HTTP Basic Auth via username/password.
 - **Environment Variables**: Used for Google Search API integration.
@@ -290,7 +293,6 @@ Set the following environment variables for Google Custom Search:
 </details>
 
 ---
-
 <a name="troubleshooting"></a>
 ## 🛠️ Troubleshooting
 
