@@ -407,87 +407,70 @@ class WebCurlServer {
         const { command } = args as { command: string };
         // Enhanced regex for both Indonesian and English commands
         const urlRegex = /(https?:\/\/[^\s]+)/gi;
-        const fetchRegex = /\b(buka|lihat|open|fetch|scrape|ambil|tampilkan|show|display|visit|go to|perlihatkan)\b.*(https?:\/\/[^\s]+)/i;
-        const searchRegex = /\b(cari|temukan|search|find|look up|googling|info|informasi|information|what is|apa itu|siapa|where is|kenapa|mengapa|how to|bagaimana|explain|jelaskan|definition|definisi)\b/i;
+        const fetchRegex = /\b(open|fetch|scrape|show|display|visit|go to)\b/i;
 
-        if (fetchRegex.test(command) || urlRegex.test(command)) {
-          // Extract first URL and call fetch_webpage
-          const urlMatch = command.match(urlRegex);
-          if (urlMatch && urlMatch[0]) {
+        const urlMatch = command.match(urlRegex);
+
+        if (fetchRegex.test(command) && urlMatch) {
+            // This is a fetch command
             try {
-              const result = await this.fetchWebpage(urlMatch[0], {
-                blockResources: true,
-                timeout: 60000,
-                startIndex: 0
-              });
-              return {
-                content: [
-                  {
-                    type: 'text',
-                    text: JSON.stringify(result, null, 2),
-                  },
-                ],
-              };
+                const result = await this.fetchWebpage(urlMatch[0], {
+                    blockResources: true,
+                    timeout: 60000,
+                    startIndex: 0
+                });
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify(result, null, 2),
+                        },
+                    ],
+                };
             } catch (error: any) {
-              return { content: [{ type: 'text', text: 'Gagal fetch: ' + error.message }], isError: true };
+                return { content: [{ type: 'text', text: 'Gagal fetch: ' + error.message }], isError: true };
             }
-          }
-        } else if (searchRegex.test(command)) {
-          // Try to extract query after search keyword
-          let query = command;
-          const searchMatch = command.match(searchRegex);
-          if (searchMatch) {
-            query = command.replace(searchRegex, '').trim();
-          }
-          if (!query) query = 'contoh'; // fallback
-          const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
-          const cx = process.env.CX_GOOGLE_SEARCH;
-          if (!apiKey || !cx) {
-            return { content: [{ type: 'text', text: 'Google Search API key and cx not set. Please set APIKEY_GOOGLE_SEARCH and CX_GOOGLE_SEARCH in environment variable.' }], isError: true };
-          }
-          const url = new URL('https://www.googleapis.com/customsearch/v1');
-          url.searchParams.set('key', apiKey);
-          url.searchParams.set('cx', cx);
-          url.searchParams.set('q', query);
-          try {
-            const result = await fetchApi({
-              url: url.toString(),
-              method: 'GET',
-              headers: {},
-              timeout: 20000,
-            });
-            let formatted;
-            if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
-              formatted = result.body.items.map((item: any) => ({
-                title: item.title,
-                link: item.link,
-                snippet: item.snippet,
-                displayLink: item.displayLink,
-              }));
-            } else {
-              formatted = result.body;
-            }
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(formatted, null, 2),
-                },
-              ],
-            };
-          } catch (error: any) {
-            return { content: [{ type: 'text', text: 'Gagal search: ' + error.message }], isError: true };
-          }
         } else {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: 'Tidak ada URL atau perintah pencarian (dalam bahasa Indonesia atau Inggris) yang terdeteksi pada instruksi.'
-              }
-            ],
-            isError: true
-          };
+            // Otherwise, this is a search command
+            const query = command;
+            const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
+            const cx = process.env.CX_GOOGLE_SEARCH;
+            if (!apiKey || !cx) {
+                return { content: [{ type: 'text', text: 'Google Search API key and cx not set. Please set APIKEY_GOOGLE_SEARCH and CX_GOOGLE_SEARCH in environment variable.' }], isError: true };
+            }
+            const url = new URL('https://www.googleapis.com/customsearch/v1');
+            url.searchParams.set('key', apiKey);
+            url.searchParams.set('cx', cx);
+            url.searchParams.set('q', query);
+            try {
+                const result = await fetchApi({
+                    url: url.toString(),
+                    method: 'GET',
+                    headers: {},
+                    timeout: 20000,
+                });
+                let formatted;
+                if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
+                    formatted = result.body.items.map((item: any) => ({
+                        title: item.title,
+                        link: item.link,
+                        snippet: item.snippet,
+                        displayLink: item.displayLink,
+                    }));
+                } else {
+                    formatted = result.body;
+                }
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify(formatted, null, 2),
+                        },
+                    ],
+                };
+            } catch (error: any) {
+                return { content: [{ type: 'text', text: 'Gagal search: ' + error.message }], isError: true };
+            }
         }
       } else {
         throw new McpError(
@@ -516,6 +499,7 @@ class WebCurlServer {
       const browser = await puppeteer.launch({
         headless: true,
         args: [
+          '--incognito',
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage'
