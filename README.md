@@ -140,7 +140,7 @@ Replace `YOUR_GOOGLE_API_KEY` and `YOUR_CX_ID` in the config above.
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/rayss868/MCP-Web-Curl
 cd web-curl
 
 # Install dependencies
