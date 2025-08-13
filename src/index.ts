@@ -11,6 +11,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
 import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
+import { franc } from 'franc-min';
+let translate: any;
+(async () => {
+  translate = (await import('translate')).default || (await import('translate'));
+})();
+import { Readability } from '@mozilla/readability';
 
 // Define the interface for the fetch_webpage tool arguments
 interface FetchWebpageArgs {
@@ -141,9 +147,19 @@ class WebCurlServer {
               password: {
                 type: 'string',
                 description: 'Password for basic authentication'
+              },
+              nextPageSelector: {
+                type: 'string',
+                description: 'CSS selector for next page button/link (for auto-pagination, optional)'
+              },
+              maxPages: {
+                type: 'number',
+                description: 'Maximum number of pages to crawl (for auto-pagination, optional, default: 1)'
               }
             },
-            required: ['url']
+            required: ['url'],
+            additionalProperties: false,
+          description: 'Fetch web content (text, html, mainContent, metadata, supports multi-page crawling). Debug option for verbose output/logging.'
           },
         },
         {
@@ -175,6 +191,8 @@ class WebCurlServer {
               },
             },
             required: ['url', 'method'],
+            additionalProperties: false,
+          description: 'HTTP API request (GET/POST/etc), custom header/body, timeout, debug mode for verbose output/logging.'
           },
         },
         {
@@ -194,9 +212,27 @@ class WebCurlServer {
               start: {
                 type: 'number',
                 description: 'Index of the first result to return (optional)'
+              },
+              language: {
+                type: 'string',
+                description: 'Restrict results to documents in this language (e.g. "lang_en", "lang_id")'
+              },
+              region: {
+                type: 'string',
+                description: 'Region code for search localization (e.g. "ID", "US")'
+              },
+              site: {
+                type: 'string',
+                description: 'Restrict results to a specific site/domain'
+              },
+              dateRestrict: {
+                type: 'string',
+                description: 'Restrict results to recent documents (e.g. "d1"=1 day, "w1"=1 week, "m1"=1 month, "y1"=1 year)'
               }
             },
-            required: ['query']
+            required: ['query'],
+            additionalProperties: false,
+          description: 'Google Custom Search API, supports advanced filters (language, region, site, dateRestrict), debug mode for verbose output/logging.'
           },
         },
         {
@@ -210,7 +246,9 @@ class WebCurlServer {
                 description: 'Instruksi bebas dari user'
               }
             },
-            required: ['command']
+            required: ['command'],
+            additionalProperties: false,
+          description: 'Free-form command: auto fetch if link detected, auto search if query. Debug option for verbose output/logging.'
           }
         },
       ],
@@ -331,11 +369,15 @@ class WebCurlServer {
             'Invalid google_search arguments'
           );
         }
-        // Only accept query, num, start as arguments; apiKey/cx from resource
-        const { query, num, start } = args as {
+        // Accept advanced arguments; apiKey/cx from resource
+        const { query, num, start, language, region, site, dateRestrict } = args as {
           query: string;
           num?: number;
           start?: number;
+          language?: string;
+          region?: string;
+          site?: string;
+          dateRestrict?: string;
         };
 
         // Use config from resource
@@ -345,12 +387,17 @@ class WebCurlServer {
           throw new McpError(ErrorCode.InvalidParams, 'Google Search API key and cx not set. Please set APIKEY_GOOGLE_SEARCH and CX_GOOGLE_SEARCH in environment variable.');
         }
 
+        let finalQuery = query;
+        if (site) finalQuery += ` site:${site}`;
         const url = new URL('https://www.googleapis.com/customsearch/v1');
         url.searchParams.set('key', apiKey);
         url.searchParams.set('cx', cx);
-        url.searchParams.set('q', query);
+        url.searchParams.set('q', finalQuery);
         if (num !== undefined) url.searchParams.set('num', String(num));
         if (start !== undefined) url.searchParams.set('start', String(start));
+        if (language) url.searchParams.set('lr', language);
+        if (region) url.searchParams.set('gl', region);
+        if (dateRestrict) url.searchParams.set('dateRestrict', dateRestrict);
 
         try {
           const result = await fetchApi({
@@ -403,74 +450,97 @@ class WebCurlServer {
           };
         }
       } else if (toolName === 'smart_command') {
-        // Smart command: simple pattern matching
+        // Smart command: advanced language detection, translation, and query enrichment
         const { command } = args as { command: string };
-        // Enhanced regex for both Indonesian and English commands
         const urlRegex = /(https?:\/\/[^\s]+)/gi;
         const fetchRegex = /\b(open|fetch|scrape|show|display|visit|go to)\b/i;
 
         const urlMatch = command.match(urlRegex);
 
         if (fetchRegex.test(command) && urlMatch) {
-            // This is a fetch command
-            try {
-                const result = await this.fetchWebpage(urlMatch[0], {
-                    blockResources: true,
-                    timeout: 60000,
-                    startIndex: 0
-                });
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(result, null, 2),
-                        },
-                    ],
-                };
-            } catch (error: any) {
-                return { content: [{ type: 'text', text: 'Gagal fetch: ' + error.message }], isError: true };
-            }
+          // This is a fetch command
+          try {
+            const result = await this.fetchWebpage(urlMatch[0], {
+              blockResources: true,
+              timeout: 60000,
+              startIndex: 0
+            });
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: 'Gagal fetch: ' + error.message }], isError: true };
+          }
         } else {
-            // Otherwise, this is a search command
-            const query = command;
-            const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
-            const cx = process.env.CX_GOOGLE_SEARCH;
-            if (!apiKey || !cx) {
-                return { content: [{ type: 'text', text: 'Google Search API key and cx not set. Please set APIKEY_GOOGLE_SEARCH and CX_GOOGLE_SEARCH in environment variable.' }], isError: true };
-            }
-            const url = new URL('https://www.googleapis.com/customsearch/v1');
-            url.searchParams.set('key', apiKey);
-            url.searchParams.set('cx', cx);
-            url.searchParams.set('q', query);
+          // Otherwise, this is a search command
+          // 1. Deteksi bahasa
+          let detectedLang = franc(command);
+          if (detectedLang === 'und') detectedLang = 'en';
+
+          // 2. Translate ke Inggris jika bukan Inggris
+          let queryEn = command;
+          if (detectedLang !== 'en') {
             try {
-                const result = await fetchApi({
-                    url: url.toString(),
-                    method: 'GET',
-                    headers: {},
-                    timeout: 20000,
-                });
-                let formatted;
-                if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
-                    formatted = result.body.items.map((item: any) => ({
-                        title: item.title,
-                        link: item.link,
-                        snippet: item.snippet,
-                        displayLink: item.displayLink,
-                    }));
-                } else {
-                    formatted = result.body;
-                }
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(formatted, null, 2),
-                        },
-                    ],
-                };
-            } catch (error: any) {
-                return { content: [{ type: 'text', text: 'Gagal search: ' + error.message }], isError: true };
+              queryEn = await translate(command, { to: 'en' });
+            } catch (e) {
+              // fallback: tetap pakai query asli
+              queryEn = command;
             }
+          }
+
+          // 3. Query enrichment: tambahkan kata kunci relevan (sederhana, bisa dikembangkan)
+          let enrichedQuery = queryEn;
+          if (!/news|latest|best|tips|how to|guide/i.test(enrichedQuery)) {
+            enrichedQuery += ' best tips';
+          }
+
+          // 4. Logging query hasil enrichment
+          let debugInfo = `Detected language: ${detectedLang}\nQuery (enriched): ${enrichedQuery}`;
+
+          // 5. Search
+          const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
+          const cx = process.env.CX_GOOGLE_SEARCH;
+          if (!apiKey || !cx) {
+            return { content: [{ type: 'text', text: 'Google Search API key and cx not set. Please set APIKEY_GOOGLE_SEARCH and CX_GOOGLE_SEARCH in environment variable.' }], isError: true };
+          }
+          const url = new URL('https://www.googleapis.com/customsearch/v1');
+          url.searchParams.set('key', apiKey);
+          url.searchParams.set('cx', cx);
+          url.searchParams.set('q', enrichedQuery);
+          try {
+            const result = await fetchApi({
+              url: url.toString(),
+              method: 'GET',
+              headers: {},
+              timeout: 20000,
+            });
+            let formatted;
+            if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
+              formatted = result.body.items.map((item: any) => ({
+                title: item.title,
+                link: item.link,
+                snippet: item.snippet,
+                displayLink: item.displayLink,
+              }));
+            } else {
+              formatted = result.body;
+            }
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: debugInfo + '\n\n' + JSON.stringify(formatted, null, 2),
+                },
+              ],
+            };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: 'Gagal search: ' + error.message }], isError: true };
+          }
         }
       } else {
         throw new McpError(
@@ -494,6 +564,8 @@ class WebCurlServer {
     headers?: Record<string, string>;
     username?: string;
     password?: string;
+    nextPageSelector?: string;
+    maxPages?: number;
   }) {
     try {
       const browser = await puppeteer.launch({
@@ -536,59 +608,101 @@ class WebCurlServer {
           });
         }
 
+        // Multi-page crawling logic
+        const results: any[] = [];
+        let currentPage = 1;
+        let currentUrl = url;
+        let hasNext = true;
 
-        // Navigate and wait for content
-        console.error(`Fetching content from: ${url}`);
-        await page.goto(url, {
-          waitUntil: 'networkidle0',
-          timeout: options.timeout
-        });
-
-        // Extract page content and metadata
-        const title = await page.title();
-        let textContent = await page.evaluate(() => document.body.textContent?.trim() || ''); // Rename variable for clarity
-        
-        // Limit text content length if maxLength is set
-        let textContentTruncated = false;
-        if (options.maxLength !== undefined && textContent.length > options.maxLength) {
-          textContent = textContent.substring(0, options.maxLength);
-          textContentTruncated = true;
-        }
-        
-        // Apply startIndex and maxLength for text content extraction
-        textContent = textContent.substring(options.startIndex);
-        if (options.maxLength !== undefined) {
-          textContent = textContent.substring(0, options.maxLength);
-        }
-        
-        const metadata = await page.evaluate(() => {
-          const metaTags: Record<string, string> = {};
-          document.querySelectorAll('meta').forEach(meta => {
-            const name = meta.getAttribute('name') || meta.getAttribute('property');
-            const content = meta.getAttribute('content');
-            if (name && content) {
-              metaTags[name] = content;
-            }
+        while (hasNext && currentPage <= (options.maxPages || 1)) {
+          console.error(`Fetching content from: ${currentUrl} (page ${currentPage})`);
+          await page.goto(currentUrl, {
+            waitUntil: 'networkidle0',
+            timeout: options.timeout
           });
-          return metaTags;
-        });
-        
-        // Create result object
-        return {
-          url,
-          title,
-          metadata,
-          textContent,
-          textContentTruncated, // True if textContent was truncated due to maxLength
-          fetchedAt: new Date().toISOString(),
-          info: textContentTruncated
-            ? (() => {
-                const startIndex = typeof options.startIndex === "number" ? options.startIndex : 0;
-                const maxLength = typeof options.maxLength === "number" ? options.maxLength : textContent.length;
-                return "Result truncated. To read more, call fetch_webpage again with startIndex set to " + (startIndex + maxLength) + " and the same maxLength.";
-              })()
-            : undefined
-        };
+
+          const title = await page.title();
+          const html = await page.content();
+
+          // Use Readability for main article extraction (Node-side)
+          let mainContent = null;
+          try {
+            const { JSDOM } = await import('jsdom');
+            const dom = new JSDOM(html, { url: currentUrl });
+            const reader = new Readability(dom.window.document);
+            mainContent = reader.parse();
+          } catch (e) {
+            mainContent = null;
+          }
+
+          let textContent = await page.evaluate(() => document.body.textContent?.trim() || '');
+          let textContentTruncated = false;
+          if (options.maxLength !== undefined && textContent.length > options.maxLength) {
+            textContent = textContent.substring(0, options.maxLength);
+            textContentTruncated = true;
+          }
+          textContent = textContent.substring(options.startIndex);
+          if (options.maxLength !== undefined) {
+            textContent = textContent.substring(0, options.maxLength);
+          }
+
+          const metadata = await page.evaluate(() => {
+            const metaTags: Record<string, string> = {};
+            document.querySelectorAll('meta').forEach(meta => {
+              const name = meta.getAttribute('name') || meta.getAttribute('property');
+              const content = meta.getAttribute('content');
+              if (name && content) {
+                metaTags[name] = content;
+              }
+            });
+            return metaTags;
+          });
+
+          results.push({
+            url: currentUrl,
+            title,
+            metadata,
+            html,
+            mainContent,
+            textContent,
+            textContentTruncated,
+            fetchedAt: new Date().toISOString(),
+            info: textContentTruncated
+              ? (() => {
+                  const startIndex = typeof options.startIndex === "number" ? options.startIndex : 0;
+                  const maxLength = typeof options.maxLength === "number" ? options.maxLength : textContent.length;
+                  return "Result truncated. To read more, call fetch_webpage again with startIndex set to " + (startIndex + maxLength) + " and the same maxLength.";
+                })()
+              : undefined
+          });
+
+          // Pagination: cari next page jika selector diberikan
+          if (options.nextPageSelector) {
+            const nextHref = await page.evaluate((sel) => {
+              const el = document.querySelector(sel);
+              if (!el) return null;
+              if (el.tagName === 'A' && el.hasAttribute('href')) {
+                return (el as HTMLAnchorElement).href;
+              }
+              // Coba klik jika bukan <a>
+              el.scrollIntoView();
+              (el as HTMLElement).click();
+              return null;
+            }, options.nextPageSelector);
+
+            if (nextHref && typeof nextHref === 'string' && nextHref !== currentUrl) {
+              currentUrl = nextHref;
+              currentPage++;
+            } else {
+              hasNext = false;
+            }
+          } else {
+            hasNext = false;
+          }
+        }
+
+        // Jika hanya 1 halaman, return objek tunggal, jika multi-page return array
+        return results.length === 1 ? results[0] : results;
       } finally {
         await browser.close();
       }
