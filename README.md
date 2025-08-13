@@ -3,7 +3,11 @@
 Google Custom Search API is free with usage limits (e.g., 100 queries per day for free, with additional queries requiring payment). For full details on quotas, pricing, and restrictions, see the [official documentation](https://developers.google.com/custom-search/v1/overview).
 # Web-curl
 
+<div align="center">
+
 ![Web-curl Logo](image/R-Web-Curl.png)
+
+</div>
 
 **Developed by Rayss**
 
@@ -12,9 +16,21 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 
 ---
 
+<div align="center">
+
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-active-success)
+
+</div>
+
+---
+
+<div align="center">
+  <a href="https://glama.ai/mcp/servers/@rayss868/MCP-Web-Curl">
+    <img width="380" height="200" src="https://glama.ai/mcp/servers/@rayss868/MCP-Web-Curl/badge" alt="Web-curl Server MCP server" />
+  </a>
+</div>
 
 ---
 
