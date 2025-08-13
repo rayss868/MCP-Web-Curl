@@ -67,9 +67,11 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 - 💾 Output results to stdout or save to a file.
 - 🖥️ Use as a CLI tool or as an MCP server.
 - 🌐 Make REST API requests with custom methods, headers, and bodies.
-- 🔍 Integrate Google Custom Search (requires API key and CX).
-- 🤖 Smart command parsing (auto-detects URLs and search queries).
-- 🛡️ Detailed error logging and robust error handling.
+- 🔍 Integrate Google Custom Search (requires API key and CX), with advanced filters (language, region, site, date).
+- 🤖 Smart command: automatic language detection, translation to English, and query enrichment for better search results.
+- 📄 fetch_webpage: supports main article extraction and multi-page crawling (pagination).
+- 🛡️ Detailed error and success logging, debug mode for verbose output.
+- 📑 All tool schemas and documentation are in English for clarity.
 
 ---
 
@@ -140,7 +142,7 @@ Replace `YOUR_GOOGLE_API_KEY` and `YOUR_CX_ID` in the config above.
 
 ```bash
 # Clone the repository
-git clone https://github.com/rayss868/MCP-Web-Curl
+git clone <repository-url>
 cd web-curl
 
 # Install dependencies
@@ -196,10 +198,10 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 
 #### Exposed Tools
 
-- **fetch_webpage**: Retrieve text content from a web page
-- **fetch_api**: Make REST API requests
-- **google_search**: Search the web using Google Custom Search API
-- **smart_command**: Automatically parse and execute commands or search queries using the appropriate tool
+- **fetch_webpage**: Retrieve text, html, main article content, and metadata from a web page. Supports multi-page crawling (pagination) and debug mode.
+- **fetch_api**: Make REST API requests with custom methods, headers, body, timeout, and debug mode.
+- **google_search**: Search the web using Google Custom Search API, with advanced filters (language, region, site, dateRestrict) and debug mode.
+- **smart_command**: Free-form command with automatic language detection, translation, query enrichment, and debug mode.
 
 #### Running as MCP Server
 
@@ -247,7 +249,7 @@ Set the following environment variables for Google Custom Search:
 ## 💡 Examples
 
 <details>
-<summary>Fetch Webpage Content</summary>
+<summary>Fetch Webpage Content (with main article extraction and multi-page crawling)</summary>
 
 ```json
 {
@@ -255,7 +257,10 @@ Set the following environment variables for Google Custom Search:
   "arguments": {
     "url": "https://en.wikipedia.org/wiki/Web_scraping",
     "blockResources": true,
-    "maxLength": 5000
+    "maxLength": 5000,
+    "nextPageSelector": ".pagination-next a",
+    "maxPages": 3,
+    "debug": true
   }
 }
 ```
@@ -279,14 +284,19 @@ Set the following environment variables for Google Custom Search:
 </details>
 
 <details>
-<summary>Google Search</summary>
+<summary>Google Search (with advanced filters)</summary>
 
 ```json
 {
   "name": "google_search",
   "arguments": {
     "query": "web scraping best practices",
-    "num": 5
+    "num": 5,
+    "language": "lang_en",
+    "region": "US",
+    "site": "wikipedia.org",
+    "dateRestrict": "w1",
+    "debug": true
   }
 }
 ```
