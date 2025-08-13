@@ -36,21 +36,17 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 
 ## 🎬 Demo Video
 
-<video src="demo/demo.mp4" controls width="600"></video>
-
 [![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](demo/demo.mp4)
 
-<details>
-<summary>Click to watch the demo directly in your browser</summary>
+> [Click here to watch the demo video directly in your browser.](demo/demo.mp4)
 
-[Demo Video (MP4)](demo/demo.mp4)
-
-</details>
+If your platform supports it, you can also [download and play demo/demo.mp4](demo/demo.mp4) directly.
 
 ---
 
 ## 📚 Table of Contents
 
+- [Changelog / Update History](#changelog)
 - [Overview](#overview)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -66,6 +62,11 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 - [License & Attribution](#license--attribution)
 
 ---
+
+<a name="changelog"></a>
+## 📝 Changelog / Update History
+
+See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new features.
 
 <a name="overview"></a>
 ## 📝 Overview
