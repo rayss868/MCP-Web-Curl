@@ -237,13 +237,13 @@ class WebCurlServer {
         },
         {
           name: 'smart_command',
-          description: 'Perintah bebas: otomatis fetch jika ada link, otomatis search jika ada kata "cari di internet".',
+          description: 'Free-form command: automatically fetch if a link is detected, automatically search if a search query is detected.',
           inputSchema: {
             type: 'object',
             properties: {
               command: {
                 type: 'string',
-                description: 'Instruksi bebas dari user'
+                description: 'Free-form user instruction'
               }
             },
             required: ['command'],
@@ -482,7 +482,7 @@ class WebCurlServer {
           let detectedLang = franc(command);
           if (detectedLang === 'und') detectedLang = 'en';
 
-          // 2. Translate ke Inggris jika bukan Inggris
+          // 2. Translate to English if not already English
           let queryEn = command;
           if (detectedLang !== 'en') {
             try {
@@ -493,13 +493,13 @@ class WebCurlServer {
             }
           }
 
-          // 3. Query enrichment: tambahkan kata kunci relevan (sederhana, bisa dikembangkan)
+          // 3. Query enrichment: add relevant keywords (simple, can be improved)
           let enrichedQuery = queryEn;
           if (!/news|latest|best|tips|how to|guide/i.test(enrichedQuery)) {
             enrichedQuery += ' best tips';
           }
 
-          // 4. Logging query hasil enrichment
+          // 4. Logging enriched query
           let debugInfo = `Detected language: ${detectedLang}\nQuery (enriched): ${enrichedQuery}`;
 
           // 5. Search
@@ -676,7 +676,7 @@ class WebCurlServer {
               : undefined
           });
 
-          // Pagination: cari next page jika selector diberikan
+          // Pagination: find next page if selector is provided
           if (options.nextPageSelector) {
             const nextHref = await page.evaluate((sel) => {
               const el = document.querySelector(sel);
@@ -684,7 +684,7 @@ class WebCurlServer {
               if (el.tagName === 'A' && el.hasAttribute('href')) {
                 return (el as HTMLAnchorElement).href;
               }
-              // Coba klik jika bukan <a>
+              // Try clicking if not an <a> element
               el.scrollIntoView();
               (el as HTMLElement).click();
               return null;
@@ -701,7 +701,7 @@ class WebCurlServer {
           }
         }
 
-        // Jika hanya 1 halaman, return objek tunggal, jika multi-page return array
+        // If only 1 page, return single object; if multi-page, return array
         return results.length === 1 ? results[0] : results;
       } finally {
         await browser.close();

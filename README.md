@@ -96,10 +96,10 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 <a name="architecture"></a>
 ## 🏗️ Architecture
 
-- **CLI & MCP Server**: [`src/index.ts`](src/index.ts:1)  
+- **CLI & MCP Server**: [`src/index.ts`](src/index.ts)  
   Implements both the CLI entry point and the MCP server, exposing tools like `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
 - **Web Scraping**: Uses Puppeteer for headless browsing, resource blocking, and content extraction.
-- **REST Client**: [`src/rest-client.ts`](src/rest-client.ts:1)  
+- **REST Client**: [`src/rest-client.ts`](src/rest-client.ts)  
   Provides a flexible HTTP client for API requests, used by both CLI and MCP tools.
 - **Configuration**: Managed via CLI options, environment variables, and tool arguments.
 
