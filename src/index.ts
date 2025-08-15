@@ -21,14 +21,14 @@ import { Readability } from '@mozilla/readability';
 // Define the interface for the fetch_webpage tool arguments
 interface FetchWebpageArgs {
   url: string;
-  blockResources?: boolean; // Keep existing for backward compatibility, or refine
-  resourceTypesToBlock?: string[]; // More granular resource blocking
+  blockResources?: boolean;
+  resourceTypesToBlock?: string[];
   timeout?: number;
-  maxLength?: number; // For content extraction
-  startIndex?: number; // For content extraction
-  headers?: Record<string, string>; // Custom headers
-  username?: string; // For basic authentication
-  password?: string; // For basic authentication
+  maxLength?: number;
+  startIndex?: number;
+  headers?: Record<string, string>;
+  username?: string;
+  password?: string;
 }
 
 // Validate the arguments for fetch_webpage tool
@@ -41,7 +41,7 @@ const isValidFetchWebpageArgs = (args: any): args is FetchWebpageArgs =>
   (args.timeout === undefined || typeof args.timeout === 'number') &&
   (args.maxLength === undefined || typeof args.maxLength === 'number') &&
   (args.startIndex === undefined || typeof args.startIndex === 'number') &&
-  (args.headers === undefined || (typeof args.headers === 'object' && args.headers !== null && !Array.isArray(args.headers))) && // Check if it's an object, not an array
+  (args.headers === undefined || (typeof args.headers === 'object' && args.headers !== null && !Array.isArray(args.headers))) &&
   (args.username === undefined || typeof args.username === 'string') &&
   (args.password === undefined || typeof args.password === 'string');
 
@@ -49,25 +49,10 @@ class WebCurlServer {
   private server: Server;
 
   constructor() {
-    // Create startup log
-    // try { // Removed logging
-    //   const logsDir = path.join(process.cwd(), 'logs');
-    //   if (!fs.existsSync(logsDir)) {
-    //     fs.mkdirSync(logsDir);
-    //   }
-      
-    //   fs.writeFileSync(
-    //     path.join(logsDir, 'startup.log'),
-    //     `[${new Date().toISOString()}] Web Curl MCP server starting\n`
-    //   );
-    // } catch (error) {
-    //   console.error('Failed to create startup log:', error);
-    // }
-    
     this.server = new Server(
       {
         name: 'web-curl',
-        version: '1.0.0',
+        version: '1.0.2',
       },
       {
         capabilities: {
@@ -80,20 +65,37 @@ class WebCurlServer {
     
     this.server.onerror = (error) => {
       console.error('[MCP Error]', error);
-      // try { // Removed logging
-      //   const logsDir = path.join(process.cwd(), 'logs');
-      //   if (!fs.existsSync(logsDir)) {
-      //     fs.mkdirSync(logsDir);
-      //   }
-      //   fs.appendFileSync(
-      //     path.join(logsDir, 'error.log'),
-      //     `[${new Date().toISOString()}] MCP Error: ${error}\n`
-      //   );
-      // } catch (e) {
-      //   console.error('Failed to log error:', e);
-      // }
     };
-    
+
+    // Prevent error log accumulation: rotate or limit log file size
+    const logsDir = path.join(process.cwd(), 'logs');
+    const errorLogPath = path.join(logsDir, 'error-log.txt');
+    try {
+      if (fs.existsSync(errorLogPath)) {
+        const stats = fs.statSync(errorLogPath);
+        // Limit log file to 1MB, rotate if exceeded
+        if (stats.size > 1024 * 1024) {
+          fs.renameSync(errorLogPath, errorLogPath + '.bak');
+        }
+      }
+    } catch (e) {
+      // Ignore log rotation errors
+    }
+
+    // Cleanup old temp files in logs directory at startup
+    try {
+      if (fs.existsSync(logsDir)) {
+        const files = fs.readdirSync(logsDir);
+        for (const file of files) {
+          if (/^puppeteer_tmp|^chromium_tmp|\.bak$/.test(file)) {
+            fs.unlinkSync(path.join(logsDir, file));
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+
     process.on('SIGINT', async () => {
       await this.server.close();
       process.exit(0);
@@ -130,11 +132,19 @@ class WebCurlServer {
               },
               maxLength: {
                 type: 'number',
-                description: 'Maximum number of characters to return for content extraction (default: 2000 if not provided)'
+                description: 'DEPRECATED. Use chunkSize instead. Maximum number of characters to return (default: 4000).'
               },
               startIndex: {
                 type: 'number',
-                description: 'Start character index for content extraction (default: 0)'
+                description: 'Start character index for content extraction (default: 0).'
+              },
+              chunkSize: {
+                type: 'number',
+                description: 'The size of each content chunk in characters. When provided, the tool enters chunking mode. (Default: 4000).'
+              },
+              chunkOverlap: {
+                type: 'number',
+                description: 'Number of characters to overlap between chunks to maintain context. (Default: 200).'
               },
               headers: {
                 type: 'object',
@@ -155,11 +165,11 @@ class WebCurlServer {
               maxPages: {
                 type: 'number',
                 description: 'Maximum number of pages to crawl (for auto-pagination, optional, default: 1)'
-              }
+              },
             },
             required: ['url'],
             additionalProperties: false,
-          description: 'Fetch web content (text, html, mainContent, metadata, supports multi-page crawling). Debug option for verbose output/logging.'
+          description: 'Fetch web content (text, html, mainContent, metadata, supports multi-page crawling, and AI-friendly regex extraction). Debug option for verbose output/logging.'
           },
         },
         {
@@ -259,62 +269,92 @@ class WebCurlServer {
       const args = request.params.arguments;
 
       if (toolName === 'fetch_webpage') {
+        // Cast args to a more specific type after validation
         if (!isValidFetchWebpageArgs(args)) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            'Invalid fetch_webpage arguments'
-          );
+            throw new McpError(ErrorCode.InvalidParams, 'Invalid fetch_webpage arguments');
         }
-        const url = args.url;
-        const blockResources = args.blockResources ?? true;
-        const resourceTypesToBlock = args.resourceTypesToBlock;
-        const timeout = Math.min(args.timeout || 60000, 120000);
-        const maxLength = args.maxLength !== undefined ? args.maxLength : 2000;
-        const startIndex = args.startIndex || 0;
-        const headers = args.headers;
-        const username = args.username;
-        const password = args.password;
+        const validatedArgs = args as FetchWebpageArgs & { 
+            chunkSize?: number; 
+            chunkOverlap?: number;
+            nextPageSelector?: string;
+            maxPages?: number;
+        };
 
-        try {
-          const result = await this.fetchWebpage(url, {
-            blockResources,
+        const {
+            url,
+            blockResources = true,
             resourceTypesToBlock,
-            timeout,
-            maxLength,
-            startIndex,
+            timeout: rawTimeout,
+            maxLength: deprecatedMaxLength,
+            startIndex = 0,
+            chunkSize,
+            chunkOverlap = 200,
             headers,
             username,
-            password
-          });
+            password,
+            nextPageSelector,
+            maxPages = 1
+        } = validatedArgs;
 
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(result, null, 2),
-              },
-            ],
-          };
+        const timeout = Math.min(rawTimeout || 60000, 120000);
+        const isChunking = typeof chunkSize === 'number';
+        const maxLength = chunkSize ?? deprecatedMaxLength ?? 4000;
+
+        try {
+            const result: any = await this.fetchWebpage(url, {
+                blockResources,
+                resourceTypesToBlock,
+                timeout,
+                maxLength,
+                startIndex,
+                headers,
+                username,
+                password,
+                nextPageSelector,
+                maxPages,
+                chunkOverlap
+            });
+
+            // If chunking, provide clear info about the next step
+            if (isChunking && typeof result.contentLength === 'number' && result.contentLength > 0) {
+                const effectiveOverlap = result.textContent.length > chunkOverlap ? chunkOverlap : 0;
+                const nextStartIndex = startIndex + maxLength - effectiveOverlap;
+                const isLastChunk = (startIndex + maxLength) >= result.contentLength;
+
+                const chunkInfo = {
+                    ...result,
+                    nextStartIndex: isLastChunk ? null : nextStartIndex,
+                    isLastChunk,
+                    instruction: isLastChunk
+                        ? 'This is the last chunk. The entire content has been fetched.'
+                        : `To fetch the next chunk, call fetch_webpage again with startIndex=${nextStartIndex}.`,
+                };
+
+                return {
+                    content: [{ type: 'text', text: JSON.stringify(chunkInfo, null, 2) }],
+                };
+            }
+
+            // Standard, non-chunked response
+            return {
+                content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            };
+
         } catch (error: any) {
-          console.error('Error fetching webpage:', error);
-          try {
-            const logsDir = path.join(process.cwd(), 'logs');
-            fs.appendFileSync(
-              path.join(logsDir, 'error-log.txt'),
-              `[${new Date().toISOString()}] Error during fetch_webpage "${url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
-            );
-          } catch (err) {
-            console.error('Failed to log error:', err);
-          }
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Error fetching webpage: ${error.message}`,
-              },
-            ],
-            isError: true,
-          };
+            console.error('Error fetching webpage:', error);
+            try {
+                const logsDir = path.join(process.cwd(), 'logs');
+                fs.appendFileSync(
+                    path.join(logsDir, 'error-log.txt'),
+                    `[${new Date().toISOString()}] Error during fetch_webpage "${url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
+                );
+            } catch (err) {
+                console.error('Failed to log error:', err);
+            }
+            return {
+                content: [{ type: 'text', text: `Error fetching webpage: ${error.message}` }],
+                isError: true,
+            };
         }
       } else if (toolName === 'fetch_api') {
         if (!isValidFetchApiArgs(args)) {
@@ -463,7 +503,10 @@ class WebCurlServer {
             const result = await this.fetchWebpage(urlMatch[0], {
               blockResources: true,
               timeout: 60000,
-              startIndex: 0
+              maxLength: 4000,
+              startIndex: 0,
+              maxPages: 1,
+              chunkOverlap: 0
             });
             return {
               content: [
@@ -493,10 +536,69 @@ class WebCurlServer {
             }
           }
 
-          // 3. Query enrichment: add relevant keywords (simple, can be improved)
+          // 3. Query enrichment: add relevant keywords (basic intent/entity extraction + multimodal + filters)
           let enrichedQuery = queryEn;
-          if (!/news|latest|best|tips|how to|guide/i.test(enrichedQuery)) {
+
+          // Intent detection (English only)
+          if (/error|bug|fix|troubleshoot|solution/i.test(enrichedQuery)) {
+            enrichedQuery += ' solution fix stackoverflow github issue';
+          } else if (/tutorial|how to|guide|step by step|example/i.test(enrichedQuery)) {
+            enrichedQuery += ' tutorial guide step by step example';
+          } else if (/paper|research|state of the art|sota|survey/i.test(enrichedQuery)) {
+            enrichedQuery += ' paper arxiv pdf survey';
+          } else if (/download|dataset|data set/i.test(enrichedQuery)) {
+            enrichedQuery += ' dataset download filetype:csv filetype:xlsx';
+          } else if (!/news|latest|best|tips|how to|guide/i.test(enrichedQuery)) {
             enrichedQuery += ' best tips';
+          }
+
+          // Multimodal: PDF, image, video
+          if (/pdf|document|paper/i.test(enrichedQuery)) {
+            enrichedQuery += ' filetype:pdf';
+          }
+          if (/image|photo|picture|screenshot/i.test(enrichedQuery)) {
+            enrichedQuery += ' images';
+          }
+          if (/video|youtube|mp4|webm/i.test(enrichedQuery)) {
+            enrichedQuery += ' videos';
+          }
+
+          // Google filters: inurl, intitle, filetype
+          if (/inurl:/i.test(enrichedQuery) === false && /url/i.test(enrichedQuery)) {
+            enrichedQuery += ' inurl:' + enrichedQuery.match(/\burl\s*[:=]?\s*(\S+)/i)?.[1] || '';
+          }
+          if (/intitle:/i.test(enrichedQuery) === false && /title/i.test(enrichedQuery)) {
+            enrichedQuery += ' intitle:' + enrichedQuery.match(/\btitle\s*[:=]?\s*(\S+)/i)?.[1] || '';
+          }
+          if (/filetype:/i.test(enrichedQuery) === false && /(\bpdf\b|\bimage\b|\bvideo\b)/i.test(enrichedQuery)) {
+            if (/\bpdf\b/i.test(enrichedQuery)) enrichedQuery += ' filetype:pdf';
+            if (/\bimage\b/i.test(enrichedQuery)) enrichedQuery += ' filetype:jpg filetype:png';
+            if (/\bvideo\b/i.test(enrichedQuery)) enrichedQuery += ' filetype:mp4 filetype:webm';
+          }
+
+          // Entity extraction: year
+          const yearMatch = enrichedQuery.match(/\b(20\d{2}|19\d{2})\b/);
+          if (yearMatch) {
+            enrichedQuery += ` after:${yearMatch[0]}`;
+          }
+          // Entity extraction: popular technology
+          if (/python|javascript|node|react|ai|machine learning|deep learning/i.test(enrichedQuery)) {
+            enrichedQuery += ' site:github.com site:stackoverflow.com';
+          }
+
+          // Local/global detection (region/language)
+          if (/indonesia|indonesian|id\b/i.test(enrichedQuery)) {
+            enrichedQuery += ' site:id region:ID';
+          } else if (/english|en\b|us\b|america|uk\b|britain/i.test(enrichedQuery)) {
+            enrichedQuery += ' region:US';
+          }
+
+          // Simple query expansion: synonyms for common topics
+          if (/ai|artificial intelligence/i.test(enrichedQuery)) {
+            enrichedQuery += ' machine learning deep learning neural network';
+          }
+          if (/bug|error|issue/i.test(enrichedQuery)) {
+            enrichedQuery += ' troubleshooting solution workaround';
           }
 
           // 4. Logging enriched query
@@ -556,160 +658,129 @@ class WebCurlServer {
   }
 
   private async fetchWebpage(url: string, options: {
-    blockResources: boolean;
-    resourceTypesToBlock?: string[];
-    timeout: number;
-    maxLength?: number;
-    startIndex: number;
-    headers?: Record<string, string>;
-    username?: string;
-    password?: string;
-    nextPageSelector?: string;
-    maxPages?: number;
+      blockResources: boolean;
+      resourceTypesToBlock?: string[];
+      timeout: number;
+      maxLength: number;
+      startIndex: number;
+      headers?: Record<string, string>;
+      username?: string;
+      password?: string;
+      nextPageSelector?: string;
+      maxPages: number;
+      chunkOverlap: number;
   }) {
-    try {
       const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--incognito',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage'
-        ]
+          headless: true,
+          args: ['--incognito', '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
       });
 
+      let page;
       try {
-        const page = await browser.newPage();
-        await page.setDefaultNavigationTimeout(options.timeout);
+          page = await browser.newPage();
+          await page.setDefaultNavigationTimeout(options.timeout);
 
-        // Set custom headers
-        if (options.headers) {
-          await page.setExtraHTTPHeaders(options.headers);
-        }
-
-        // Set basic authentication
-        if (options.username && options.password) {
-          await page.authenticate({
-            username: options.username,
-            password: options.password
-          });
-        }
-
-        // Block unnecessary resources if requested
-        if (options.blockResources || options.resourceTypesToBlock) {
-          await page.setRequestInterception(true);
-          page.on('request', req => {
-            const resourceType = req.resourceType();
-            const shouldBlock = options.resourceTypesToBlock
-              ? options.resourceTypesToBlock.includes(resourceType)
-              : options.blockResources && ['image', 'stylesheet', 'font'].includes(resourceType);
-
-            shouldBlock ? req.abort() : req.continue();
-          });
-        }
-
-        // Multi-page crawling logic
-        const results: any[] = [];
-        let currentPage = 1;
-        let currentUrl = url;
-        let hasNext = true;
-
-        while (hasNext && currentPage <= (options.maxPages || 1)) {
-          console.error(`Fetching content from: ${currentUrl} (page ${currentPage})`);
-          await page.goto(currentUrl, {
-            waitUntil: 'networkidle0',
-            timeout: options.timeout
-          });
-
-          const title = await page.title();
-          const html = await page.content();
-
-          // Use Readability for main article extraction (Node-side)
-          let mainContent = null;
-          try {
-            const { JSDOM } = await import('jsdom');
-            const dom = new JSDOM(html, { url: currentUrl });
-            const reader = new Readability(dom.window.document);
-            mainContent = reader.parse();
-          } catch (e) {
-            mainContent = null;
+          if (options.headers) {
+              await page.setExtraHTTPHeaders(options.headers);
           }
 
-          let textContent = await page.evaluate(() => document.body.textContent?.trim() || '');
-          let textContentTruncated = false;
-          if (options.maxLength !== undefined && textContent.length > options.maxLength) {
-            textContent = textContent.substring(0, options.maxLength);
-            textContentTruncated = true;
-          }
-          textContent = textContent.substring(options.startIndex);
-          if (options.maxLength !== undefined) {
-            textContent = textContent.substring(0, options.maxLength);
+          if (options.username && options.password) {
+              await page.authenticate({ username: options.username, password: options.password });
           }
 
-          const metadata = await page.evaluate(() => {
-            const metaTags: Record<string, string> = {};
-            document.querySelectorAll('meta').forEach(meta => {
-              const name = meta.getAttribute('name') || meta.getAttribute('property');
-              const content = meta.getAttribute('content');
-              if (name && content) {
-                metaTags[name] = content;
+          if (options.blockResources || options.resourceTypesToBlock) {
+              await page.setRequestInterception(true);
+              page.on('request', req => {
+                  const resourceType = req.resourceType();
+                  const typesToBlock = options.resourceTypesToBlock ?? ['image', 'stylesheet', 'font'];
+                  if (typesToBlock.includes(resourceType)) {
+                      req.abort();
+                  } else {
+                      req.continue();
+                  }
+              });
+          }
+
+          const results: any[] = [];
+          let currentUrl = url;
+          let currentPageNum = 1;
+
+          while (currentPageNum <= options.maxPages) {
+              console.error(`Fetching content from: ${currentUrl} (page ${currentPageNum})`);
+              await page.goto(currentUrl, { waitUntil: 'networkidle0', timeout: options.timeout });
+
+              const title = await page.title();
+
+              // Efficiently extract and slice content within the browser context
+              const pageContent = await page.evaluate((startIndex, maxLength) => {
+                  const body = document.body;
+                  const textContent = body.textContent?.trim() || '';
+                  const slicedText = textContent.substring(startIndex, startIndex + maxLength);
+                  return {
+                      fullContentLength: textContent.length,
+                      slicedText: slicedText,
+                  };
+              }, options.startIndex, options.maxLength);
+              
+              const html = await page.content();
+              
+              // Use Readability on the full HTML for better article extraction
+              let mainContent = null;
+              try {
+                const { JSDOM } = await import('jsdom');
+                const dom = new JSDOM(html, { url: currentUrl });
+                const reader = new Readability(dom.window.document);
+                mainContent = reader.parse();
+                // Also slice the readability output
+                if (mainContent && mainContent.textContent) {
+                    mainContent.textContent = mainContent.textContent.substring(options.startIndex, options.startIndex + options.maxLength);
+                }
+              } catch(e) {
+                mainContent = null; // Ignore Readability errors
               }
-            });
-            return metaTags;
-          });
 
-          results.push({
-            url: currentUrl,
-            title,
-            metadata,
-            html,
-            mainContent,
-            textContent,
-            textContentTruncated,
-            fetchedAt: new Date().toISOString(),
-            info: textContentTruncated
-              ? (() => {
-                  const startIndex = typeof options.startIndex === "number" ? options.startIndex : 0;
-                  const maxLength = typeof options.maxLength === "number" ? options.maxLength : textContent.length;
-                  return "Result truncated. To read more, call fetch_webpage again with startIndex set to " + (startIndex + maxLength) + " and the same maxLength.";
-                })()
-              : undefined
-          });
-
-          // Pagination: find next page if selector is provided
-          if (options.nextPageSelector) {
-            const nextHref = await page.evaluate((sel) => {
-              const el = document.querySelector(sel);
-              if (!el) return null;
-              if (el.tagName === 'A' && el.hasAttribute('href')) {
-                return (el as HTMLAnchorElement).href;
+              results.push({
+                  url: currentUrl,
+                  title,
+                  textContent: pageContent.slicedText,
+                  contentLength: pageContent.fullContentLength,
+                  mainContent: mainContent, // Contains sliced main content
+                  fetchedAt: new Date().toISOString(),
+              });
+              
+              if (!options.nextPageSelector || currentPageNum >= options.maxPages) {
+                  break;
               }
-              // Try clicking if not an <a> element
-              el.scrollIntoView();
-              (el as HTMLElement).click();
-              return null;
-            }, options.nextPageSelector);
 
-            if (nextHref && typeof nextHref === 'string' && nextHref !== currentUrl) {
-              currentUrl = nextHref;
-              currentPage++;
-            } else {
-              hasNext = false;
-            }
-          } else {
-            hasNext = false;
+              // Pagination logic
+              const nextHref = await page.evaluate((sel) => {
+                  const el = document.querySelector(sel) as HTMLAnchorElement | HTMLElement;
+                  if (el) {
+                      if ('href' in el && (el as HTMLAnchorElement).href) {
+                          return (el as HTMLAnchorElement).href;
+                      }
+                      el.click(); // Fallback for non-anchor elements
+                  }
+                  return null;
+              }, options.nextPageSelector);
+
+              if (nextHref && nextHref !== currentUrl) {
+                  currentUrl = nextHref;
+                  currentPageNum++;
+              } else {
+                  break; // No more pages
+              }
           }
-        }
 
-        // If only 1 page, return single object; if multi-page, return array
-        return results.length === 1 ? results[0] : results;
+          return results.length === 1 ? results[0] : results;
+      } catch (err) {
+          throw err;
       } finally {
-        await browser.close();
+          // Always close browser to prevent temp file leaks
+          if (browser) {
+            try { await browser.close(); } catch (e) {}
+          }
       }
-    } catch (error) {
-      console.error('Webpage fetch error:', error);
-      throw error;
-    }
   }
 
   async run() {
@@ -719,5 +790,48 @@ class WebCurlServer {
   }
 }
 
-const server = new WebCurlServer();
-server.run().catch(console.error);
+if (process.argv[1] && process.argv[1].endsWith('index.js')) {
+  // CLI mode (ESM compatible)
+  import('yargs').then(({ default: yargs }) => {
+    yargs(process.argv.slice(2))
+      .scriptName('web-curl')
+      .usage('$0 <url> [options]')
+      .option('timeout', { type: 'number', describe: 'Navigation timeout (ms)', default: 60000 })
+      .option('blockResources', { type: 'boolean', describe: 'Block images/styles/fonts', default: true })
+      .option('maxLength', { type: 'number', describe: 'Max chars to extract', default: 2000 })
+      .option('startIndex', { type: 'number', describe: 'Start char index', default: 0 })
+      .help()
+      .parseAsync()
+      .then(async (argv: any) => {
+        // Jika tidak ada url, jalankan MCP server
+        if (!argv._[0]) {
+          const server = new WebCurlServer();
+          server.run().catch(console.error);
+          return;
+        }
+        const url = argv._[0];
+        const blockResources = argv.blockResources;
+        const timeout = argv.timeout;
+        const maxLength = argv.maxLength;
+        const startIndex = argv.startIndex;
+        const server = new WebCurlServer();
+        try {
+          const result = await (server as any).fetchWebpage(url, {
+            blockResources,
+            timeout,
+            maxLength,
+            startIndex,
+            maxPages: 1,
+            chunkOverlap: 0
+          });
+          console.log(JSON.stringify(result, null, 2));
+        } catch (e) {
+          console.error('[CLI ERROR]', e);
+          process.exit(1);
+        }
+      });
+  });
+} else {
+  const server = new WebCurlServer();
+  server.run().catch(console.error);
+}

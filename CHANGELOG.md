@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.2] - 2025-08-14
+
+### Minor Enhancements
+
+- **Storage management**:
+  - Error log file is automatically rotated if it exceeds 1MB to prevent unlimited growth.
+  - Old temporary files in the logs directory are cleaned up at startup.
+  - The browser is always closed after each operation to prevent Chromium temp file leaks.
+
+- **Error logging**: All tool errors are logged to `logs/error-log.txt` for troubleshooting.
+- **Chunking options**: Added `chunkOverlap` parameter for overlapping content chunks in `fetch_webpage`.
+- **Smart command improvements**: Fallback to original query if translation fails, and simple query enrichment logic (adds "best tips" if not present).
+
 ## [1.0.1] - 2025-08-13
 
 ### Major Enhancements

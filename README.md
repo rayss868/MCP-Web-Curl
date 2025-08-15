@@ -79,6 +79,11 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 ## ✨ Features
 
+### Storage Management
+
+- 🗂️Error log file is automatically rotated if it exceeds 1MB to prevent unlimited growth.
+- 🧹Old temporary files in the logs directory are cleaned up at startup.
+- 🛑The browser is always closed after each operation to prevent Chromium temp file leaks.
 - 🔎 Retrieve text content from any website.
 - 🚫 Block unnecessary resources (images, stylesheets, fonts) for faster loading.
 - ⏱️ Set navigation timeouts and content extraction limits.
@@ -243,6 +248,51 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
 }
 ```
 
+---
+
+### 🚦 Chunked Fetch Example (Recommended for Large Pages)
+
+To safely fetch large content without exceeding the AI context window, use chunked fetch mode:
+
+```json
+{
+  "name": "fetch_webpage",
+  "arguments": {
+    "url": "https://example.com",
+    "blockResources": true,
+    "timeout": 60000,
+    "tokenIncrement": 2000,   // Total tokens you want to fetch (e.g. 2000)
+    "startIndex": 0,          // Start from 0 for the first chunk
+    "currentToken": 0,        // Your current token usage
+    "maxToken": 8000          // Your model's context window limit
+  }
+}
+```
+
+- The server will always return a chunk of 500 characters per call.
+- To fetch the next chunk, increment `startIndex` by 500 and repeat the call until you reach your desired tokenIncrement.
+- AI must remember and combine all chunks in order.
+- This prevents overfilling the context window and ensures efficient, safe incremental fetching.
+
+Example for fetching the next chunk:
+
+```json
+{
+  "name": "fetch_webpage",
+  "arguments": {
+    "url": "https://example.com",
+    "blockResources": true,
+    "timeout": 60000,
+    "tokenIncrement": 2000,
+    "startIndex": 500,        // Next chunk: 500, then 1000, etc.
+    "currentToken": 0,
+    "maxToken": 8000
+  }
+}
+```
+
+**Important:** Always combine the results of each chunk in order to reconstruct the full content. Do not request the entire content in one call for large pages.
+
 #### Google Search Integration
 
 Set the following environment variables for Google Custom Search:
@@ -342,7 +392,7 @@ Set the following environment variables for Google Custom Search:
 - For large pages, use `maxLength` and `startIndex` to paginate content extraction.
 - Always validate your tool arguments to avoid errors.
 - Secure your API keys and sensitive data using environment variables.
-- Review the MCP tool schemas in [`src/index.ts`](src/index.ts:98) for all available options.
+- Review the MCP tool schemas in [`src/index.ts`](src/index.ts) for all available options.
 
 </details>
 
