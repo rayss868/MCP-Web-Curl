@@ -1,6 +1,6 @@
 {
   "name": "web-curl",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A universal CLI and MCP server tool for fetching, extracting, and processing web and API content. Supports resource blocking, authentication, Google Custom Search, and robust automation.",
   "author": "Rayss",
   "license": "MIT",

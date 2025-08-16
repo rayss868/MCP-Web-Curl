@@ -28,7 +28,7 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 ---
 
 <div align="center">
-  <a href="https://glama.ai/mcp/servers/@rayss868/MCP-Web-Curl">
+  <a href="https://github.com/rayss868/MCP-Web-Curl">
     <img width="380" height="200" src="https://glama.ai/mcp/servers/@rayss868/MCP-Web-Curl/badge" alt="Web-curl Server MCP server" />
   </a>
 </div>
@@ -79,21 +79,51 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 ## ✨ Features
 
-### Storage Management
+### Storage & Download Details
 
-- 🗂️Error log file is automatically rotated if it exceeds 1MB to prevent unlimited growth.
-- 🧹Old temporary files in the logs directory are cleaned up at startup.
-- 🛑The browser is always closed after each operation to prevent Chromium temp file leaks.
-- 🔎 Retrieve text content from any website.
-- 🚫 Block unnecessary resources (images, stylesheets, fonts) for faster loading.
-- ⏱️ Set navigation timeouts and content extraction limits.
-- 💾 Output results to stdout or save to a file.
-- 🖥️ Use as a CLI tool or as an MCP server.
-- 🌐 Make REST API requests with custom methods, headers, and bodies.
-- 🔍 Integrate Google Custom Search (requires API key and CX), with advanced filters (language, region, site, date).
-- 🤖 Smart command: automatic language detection, translation to English, and query enrichment for better search results.
-- 📄 fetch_webpage: supports main article extraction and multi-page crawling (pagination).
-- 🛡️ Detailed error and success logging, debug mode for verbose output.
+- 🗂️ Error log rotation: `logs/error-log.txt` is rotated when it exceeds ~1MB (renamed to `error-log.txt.bak`) to prevent unbounded growth.
+- 🧹 Logs & temp cleanup: old temporary files in the `logs/` directory are cleaned up at startup.
+- 🛑 Browser lifecycle: Puppeteer browser instances are closed in finally blocks to avoid Chromium temp file leaks.
+- 🔎 Content extraction:
+  - Returns raw text, HTML, and Readability "main article" when available.
+  - Readability output is subject to `startIndex`/`maxLength`/`chunkSize` slicing when requested.
+- 🚫 Resource blocking: images, stylesheets, and fonts can be blocked for faster page loads.
+- ⏱️ Timeout control: navigation and API request timeouts are configurable via tool arguments.
+- 💾 Output: results can be printed to stdout or written to a file via CLI options.
+- ⬇️ Download behavior (`download_file`):
+  - `destinationFolder` accepts relative paths (resolved against `process.cwd()`) or absolute paths.
+  - The server creates `destinationFolder` if it does not exist.
+  - Downloads are streamed using Node streams + `pipeline` to minimize memory use and ensure robust writes.
+  - Filenames are derived from the URL path (e.g., `https://.../path/file.jpg` -> `file.jpg`). If no filename is present, the fallback name is `downloaded_file`.
+  - Overwrite semantics: by default the implementation will overwrite an existing file with the same name. To avoid overwrite, provide a unique `destinationFolder` or include a unique filename (timestamp, uuid) in the URL path or destination prior to calling the tool. (Optionally the code can be extended to support a `noOverwrite` flag to auto-rename files—ask if you want this implemented.)
+  - Error handling: non-2xx responses cause a thrown error; partial writes are avoided by streaming through `pipeline` and only returning the final path on success.
+- 🖥️ Usage modes: CLI and MCP server (stdin/stdout transport).
+- 🌐 REST client: `fetch_api` returns JSON/text when appropriate and base64 for binary responses.
+- Note: `fetch_api` now requires a numeric `limit` parameter; responses will be truncated to at most `limit` characters. The response object includes `bodyLength` (original length in characters) and `truncated` (boolean).
+- `fetch_api` is marked `autoApprove` in the MCP tool listing so compatible MCP hosts may invoke it without interactive approval. Internal calls in this codebase use a sensible default `limit` of 1000 characters where applicable.
+- 🔍 Google Custom Search: requires `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH`.
+- 🤖 Smart command:
+  - Auto language detection (franc-min) and optional translation (dynamic `translate` import). Translation is a best-effort fallback and may fail silently; original text is preserved on failure.
+  - Query enrichment is heuristic-based; results depend on the detected intent.
+- 📄 fetch_webpage specifics:
+  - Multi-page crawling via `nextPageSelector` (tries href first, falls back to clicking the element).
+  - Use `chunkSize` + `chunkOverlap` for deterministic chunking; legacy `maxLength` is still supported but `chunkSize` is preferred.
+  - Required parameters: `startIndex` (or alias `index`) and at least one of `chunkSize` (preferred), `limit` (alias), or `maxLength` must be provided and be a number. Calls missing these required parameters will be rejected with an InvalidParams error. Set these values according to your needs; they may not be empty.
+  - Validation behavior: runtime validation is enforced in `src/index.ts` and the MCP tool will throw/reject when required parameters are missing or invalid. If you prefer automatic fallbacks instead of rejection, modify the validation logic in `src/index.ts`.
+- 🛡️ Debug & Logging
+  - Runtime logs: detailed runtime errors and debug traces are written to `logs/error-log.txt` by default.
+  - Debug flag: some CLI/tool paths accept a `debug` argument which enables more verbose console logging; not all code paths consistently honor a `debug` flag yet. Prefer inspecting `logs/error-log.txt` for complete traces.
+  - To enable console-level debug consistently, a small code change to read a `DEBUG=true` env var or a global `--debug` CLI option can be added (recommended for development).
+- ⚙️ Compatibility & Build notes
+  - The project currently depends on `node-fetch` but targets Node 18+, which provides a global `fetch`. Consider replacing `node-fetch` with the global `fetch` to remove the dependency and avoid cross-version issues.
+  - `npm run build` runs `tsc` and a `chmod` step that is no-op on Windows; CI or cross-platform scripts should guard `chmod` with a platform check.
+- 🔐 Security considerations
+  - SSRF: validate/whitelist destination hosts if exposing `fetch_api`/`fetch_webpage` publicly.
+  - Rate limiting & auth: add request rate limiting and access controls for public deployments.
+  - Puppeteer flags: `--no-sandbox` reduces isolation; only use it where required and understand the risk on multi-tenant systems.
+- 🧪 Tests & linting
+  - Linting: `npm run lint` is provided; include a pre-commit hook (husky) to enforce linting in CI.
+  - Tests: no unit tests are included yet. Adding simple integration tests for `fetch_api` and `download_file` is recommended.
 - 📑 All tool schemas and documentation are in English for clarity.
 
 ---
@@ -107,6 +137,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 - **REST Client**: [`src/rest-client.ts`](src/rest-client.ts)  
   Provides a flexible HTTP client for API requests, used by both CLI and MCP tools.
 - **Configuration**: Managed via CLI options, environment variables, and tool arguments.
+  - Note: the server creates `logs/` at startup and resolves relative paths against `process.cwd()`. Tools exposed include `download_file` (streaming writes), `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
 
 ---
 <a name="installation"></a>
@@ -128,7 +159,8 @@ To integrate web-curl as an MCP server, add the following configuration to your 
         "fetch_webpage",
         "fetch_api",
         "google_search",
-        "smart_command"
+        "smart_command",
+        "download_file"
       ],
       "env": {
         "APIKEY_GOOGLE_SEARCH": "YOUR_GOOGLE_API_KEY",
@@ -165,7 +197,7 @@ Replace `YOUR_GOOGLE_API_KEY` and `YOUR_CX_ID` in the config above.
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/rayss868/MCP-Web-Curl
 cd web-curl
 
 # Install dependencies
@@ -225,6 +257,7 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 - **fetch_api**: Make REST API requests with custom methods, headers, body, timeout, and debug mode.
 - **google_search**: Search the web using Google Custom Search API, with advanced filters (language, region, site, dateRestrict) and debug mode.
 - **smart_command**: Free-form command with automatic language detection, translation, query enrichment, and debug mode.
+- **download_file**: Download a file from a given URL to a specified folder.
 
 #### Running as MCP Server
 
@@ -252,46 +285,54 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
 
 ### 🚦 Chunked Fetch Example (Recommended for Large Pages)
 
-To safely fetch large content without exceeding the AI context window, use chunked fetch mode:
+For large documents use deterministic chunking with `chunkSize` and `chunkOverlap`. The server supports `chunkSize` (preferred) and `chunkOverlap` to preserve context between chunks. Example workflow:
 
+Client request for first chunk:
 ```json
 {
   "name": "fetch_webpage",
   "arguments": {
-    "url": "https://example.com",
+    "url": "https://example.com/long-article",
     "blockResources": true,
     "timeout": 60000,
-    "tokenIncrement": 2000,   // Total tokens you want to fetch (e.g. 2000)
-    "startIndex": 0,          // Start from 0 for the first chunk
-    "currentToken": 0,        // Your current token usage
-    "maxToken": 8000          // Your model's context window limit
+    "chunkSize": 2000,     // number of characters per chunk
+    "chunkOverlap": 200,   // overlap between chunks to preserve context
+    "startIndex": 0
   }
 }
 ```
 
-- The server will always return a chunk of 500 characters per call.
-- To fetch the next chunk, increment `startIndex` by 500 and repeat the call until you reach your desired tokenIncrement.
-- AI must remember and combine all chunks in order.
-- This prevents overfilling the context window and ensures efficient, safe incremental fetching.
+Server response (example):
+```json
+{
+  "text": "First 2000 characters...",
+  "startIndex": 0,
+  "nextStartIndex": 1800,   // nextStartIndex = startIndex + (chunkSize - chunkOverlap)
+  "chunkSize": 2000,
+  "chunkOverlap": 200,
+  "isLastChunk": false
+}
+```
 
-Example for fetching the next chunk:
-
+Client fetches the next chunk by setting `startIndex` to `nextStartIndex`:
 ```json
 {
   "name": "fetch_webpage",
   "arguments": {
-    "url": "https://example.com",
-    "blockResources": true,
-    "timeout": 60000,
-    "tokenIncrement": 2000,
-    "startIndex": 500,        // Next chunk: 500, then 1000, etc.
-    "currentToken": 0,
-    "maxToken": 8000
+    "url": "https://example.com/long-article",
+    "chunkSize": 2000,
+    "chunkOverlap": 200,
+    "startIndex": 1800
   }
 }
 ```
 
-**Important:** Always combine the results of each chunk in order to reconstruct the full content. Do not request the entire content in one call for large pages.
+- Continue until `isLastChunk: true`.
+- Reassemble the full content by concatenating each `text` in order, trimming the overlapped region if desired (or keeping overlaps if you prefer redundant context).
+- Notes:
+  - `chunkSize`/`chunkOverlap` operate on characters (deterministic) in the current implementation.
+  - If `chunkSize` is not provided, legacy `maxLength`/`startIndex` slicing is used.
+  - The server returns `nextStartIndex` and `isLastChunk` to make client loop logic simple and deterministic.
 
 #### Google Search Integration
 
@@ -368,6 +409,22 @@ Set the following environment variables for Google Custom Search:
   }
 }
 ```
+</details>
+
+<details>
+<summary>Download File</summary>
+
+```json
+{
+  "name": "download_file",
+  "arguments": {
+    "url": "https://example.com/image.jpg",
+    "destinationFolder": "downloads"
+  }
+}
+```
+
+Note: `destinationFolder` can be either a relative path (resolved against the current working directory, `process.cwd()`) or an absolute path. The server will create the destination folder if it does not exist.
 </details>
 
 ---
