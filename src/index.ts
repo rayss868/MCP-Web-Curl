@@ -12,24 +12,51 @@ import * as path from 'path';
 import puppeteer from 'puppeteer';
 import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
 import { franc } from 'franc-min';
+import fetch from 'node-fetch'; // Import fetch
+import { Readable } from 'stream'; // Import Readable for Node.js stream
+import { pipeline } from 'node:stream/promises'; // Import pipeline for robust stream handling
 let translate: any;
 (async () => {
   translate = (await import('translate')).default || (await import('translate'));
 })();
 import { Readability } from '@mozilla/readability';
 
-// Define the interface for the fetch_webpage tool arguments
-interface FetchWebpageArgs {
-  url: string;
-  blockResources?: boolean;
-  resourceTypesToBlock?: string[];
-  timeout?: number;
-  maxLength?: number;
+ // Define the interface for the fetch_webpage tool arguments
+ interface FetchWebpageArgs {
+   url: string;
+   blockResources?: boolean;
+   resourceTypesToBlock?: string[];
+   timeout?: number;
+   maxLength?: number;
   startIndex?: number;
+  chunkSize?: number;
+  chunkOverlap?: number;
+  nextPageSelector?: string;
+  maxPages?: number;
   headers?: Record<string, string>;
   username?: string;
   password?: string;
+ }
+
+// Define the interface for the download_file tool arguments
+interface DownloadFileArgs {
+  url: string;
+  destinationFolder: string;
 }
+
+// Validate the arguments for download_file tool
+const isValidDownloadFileArgs = (args: any): args is DownloadFileArgs => {
+  if (
+    typeof args === 'object' &&
+    args !== null &&
+    typeof args.url === 'string' &&
+    typeof args.destinationFolder === 'string'
+  ) {
+    // Accept relative paths; resolution is handled in downloadFile (resolved against process.cwd())
+    return true;
+  }
+  return false;
+};
 
 // Validate the arguments for fetch_webpage tool
 const isValidFetchWebpageArgs = (args: any): args is FetchWebpageArgs =>
@@ -52,7 +79,7 @@ class WebCurlServer {
     this.server = new Server(
       {
         name: 'web-curl',
-        version: '1.0.2',
+        version: '1.0.3',
       },
       {
         capabilities: {
@@ -69,6 +96,8 @@ class WebCurlServer {
 
     // Prevent error log accumulation: rotate or limit log file size
     const logsDir = path.join(process.cwd(), 'logs');
+    // Ensure logs directory exists so subsequent appends won't fail
+    try { fs.mkdirSync(logsDir, { recursive: true }); } catch (e) {}
     const errorLogPath = path.join(logsDir, 'error-log.txt');
     try {
       if (fs.existsSync(errorLogPath)) {
@@ -136,11 +165,15 @@ class WebCurlServer {
               },
               startIndex: {
                 type: 'number',
-                description: 'Start character index for content extraction (default: 0).'
+                description: 'Start character index for content extraction (required; default: 0).'
               },
               chunkSize: {
                 type: 'number',
-                description: 'The size of each content chunk in characters. When provided, the tool enters chunking mode. (Default: 4000).'
+                description: 'The size of each content chunk in characters. When provided, the tool enters chunking mode. (Preferred; required unless legacy "limit" or "maxLength" provided).'
+              },
+              limit: {
+                type: 'number',
+                description: 'Alias for chunkSize (legacy). Accepts same values as chunkSize.'
               },
               chunkOverlap: {
                 type: 'number',
@@ -167,7 +200,12 @@ class WebCurlServer {
                 description: 'Maximum number of pages to crawl (for auto-pagination, optional, default: 1)'
               },
             },
-            required: ['url'],
+            required: ['url', 'startIndex'],
+            anyOf: [
+              { required: ['chunkSize'] },
+              { required: ['limit'] },
+              { required: ['maxLength'] }
+            ],
             additionalProperties: false,
           description: 'Fetch web content (text, html, mainContent, metadata, supports multi-page crawling, and AI-friendly regex extraction). Debug option for verbose output/logging.'
           },
@@ -175,6 +213,7 @@ class WebCurlServer {
         {
           name: 'fetch_api',
           description: 'Make a REST API request with various methods, headers, and body.',
+          autoApprove: true,
           inputSchema: {
             type: 'object',
             properties: {
@@ -199,8 +238,12 @@ class WebCurlServer {
                 type: 'number',
                 description: 'Request timeout in milliseconds (default: 60000).',
               },
+              limit: {
+                type: 'number',
+                description: 'Maximum number of characters to return in the response body (required).'
+              },
             },
-            required: ['url', 'method'],
+            required: ['url', 'method', 'limit'],
             additionalProperties: false,
           description: 'HTTP API request (GET/POST/etc), custom header/body, timeout, debug mode for verbose output/logging.'
           },
@@ -261,6 +304,25 @@ class WebCurlServer {
           description: 'Free-form command: auto fetch if link detected, auto search if query. Debug option for verbose output/logging.'
           }
         },
+        {
+          name: 'download_file',
+          description: 'Download a file from a given URL to a specified folder.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              url: {
+                type: 'string',
+                description: 'The URL of the file to download.'
+              },
+              destinationFolder: {
+                type: 'string',
+                description: 'The destination folder (relative to the workspace directory) to save the file.'
+              }
+            },
+            required: ['url', 'destinationFolder'],
+            additionalProperties: false,
+          },
+        },
       ],
     }));
 
@@ -273,6 +335,32 @@ class WebCurlServer {
         if (!isValidFetchWebpageArgs(args)) {
             throw new McpError(ErrorCode.InvalidParams, 'Invalid fetch_webpage arguments');
         }
+
+        // Map legacy/alias params to current names:
+        // - 'limit' -> chunkSize
+        // - 'index' -> startIndex
+        try {
+          if (typeof (args as any).limit === 'number' && typeof (args as any).chunkSize !== 'number') {
+            (args as any).chunkSize = (args as any).limit;
+          }
+          if (typeof (args as any).index === 'number' && typeof (args as any).startIndex !== 'number') {
+            (args as any).startIndex = (args as any).index;
+          }
+        } catch (e) {
+          // ignore mapping errors; validation below will catch invalid shapes
+        }
+
+        // Enforce required parameters (runtime validation).
+        // Requirement based on confirmation: require startIndex (or index) and at least one of chunkSize/limit/maxLength.
+        const hasStartIndex = typeof (args as any).startIndex === 'number';
+        const hasChunkish = typeof (args as any).chunkSize === 'number' || typeof (args as any).limit === 'number' || typeof (args as any).maxLength === 'number';
+        if (!hasStartIndex) {
+          throw new McpError(ErrorCode.InvalidParams, "fetch_webpage: required parameter 'startIndex' (or alias 'index') is missing or not a number");
+        }
+        if (!hasChunkish) {
+          throw new McpError(ErrorCode.InvalidParams, "fetch_webpage: required parameter 'chunkSize' (or alias 'limit' / 'maxLength') is missing or not a number");
+        }
+
         const validatedArgs = args as FetchWebpageArgs & { 
             chunkSize?: number; 
             chunkOverlap?: number;
@@ -439,13 +527,14 @@ class WebCurlServer {
         if (region) url.searchParams.set('gl', region);
         if (dateRestrict) url.searchParams.set('dateRestrict', dateRestrict);
 
-        try {
-          const result = await fetchApi({
-            url: url.toString(),
-            method: 'GET',
-            headers: {},
-            timeout: 20000,
-          });
+          try {
+            const result = await fetchApi({
+              url: url.toString(),
+              method: 'GET',
+              headers: {},
+              timeout: 20000,
+              limit: 1000,
+            });
 
           // Format only the relevant search results
           let formatted;
@@ -620,6 +709,7 @@ class WebCurlServer {
               method: 'GET',
               headers: {},
               timeout: 20000,
+              limit: 1000,
             });
             let formatted;
             if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
@@ -643,6 +733,32 @@ class WebCurlServer {
           } catch (error: any) {
             return { content: [{ type: 'text', text: 'Gagal search: ' + error.message }], isError: true };
           }
+        }
+      } else if (toolName === 'download_file') {
+        if (!isValidDownloadFileArgs(args)) {
+          throw new McpError(ErrorCode.InvalidParams, 'Invalid download_file arguments');
+        }
+        const validatedArgs = args as DownloadFileArgs;
+        try {
+          const filePath = await this.downloadFile(validatedArgs.url, validatedArgs.destinationFolder);
+          return {
+            content: [{ type: 'text', text: `File downloaded successfully to: ${filePath}` }],
+          };
+        } catch (error: any) {
+          console.error('Error calling download_file:', error);
+          try {
+            const logsDir = path.join(process.cwd(), 'logs');
+            fs.appendFileSync(
+              path.join(logsDir, 'error-log.txt'),
+              `[${new Date().toISOString()}] Error during download_file "${validatedArgs.url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
+            );
+          } catch (err) {
+            console.error('Failed to log error:', err);
+          }
+          return {
+            content: [{ type: 'text', text: `Error downloading file: ${error.message}` }],
+            isError: true,
+          };
         }
       } else {
         throw new McpError(
@@ -783,6 +899,47 @@ class WebCurlServer {
       }
   }
 
+  private async downloadFile(url: string, destinationFolder: string): Promise<string> {
+    const logsDir = path.join(process.cwd(), 'logs');
+    try {
+      // Ensure the destination folder exists
+      const fullDestinationPath = path.resolve(process.cwd(), destinationFolder);
+      if (!fs.existsSync(fullDestinationPath)) {
+        fs.mkdirSync(fullDestinationPath, { recursive: true });
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
+
+      const filename = path.basename(new URL(url).pathname) || 'downloaded_file';
+      const filePath = path.join(fullDestinationPath, filename);
+
+      const fileStream = fs.createWriteStream(filePath);
+      if (response.body) {
+        // Convert Web ReadableStream to Node.js Readable stream
+        const nodeReadableStream = Readable.from(response.body);
+        await pipeline(nodeReadableStream, fileStream);
+      } else {
+        throw new Error('Response body is null.');
+      }
+
+      return filePath; // Return the path to the downloaded file
+    } catch (error: any) {
+      console.error('Error downloading file:', error);
+      try {
+        fs.appendFileSync(
+          path.join(logsDir, 'error-log.txt'),
+          `[${new Date().toISOString()}] Error during download_file "${url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
+        );
+      } catch (err) {
+        console.error('Failed to log error:', err);
+      }
+      throw new Error(`Failed to download file: ${error.message}`);
+    }
+  }
+ 
   async run() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);

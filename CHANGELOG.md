@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.3] - 2025-08-16
+
+### Added
+
+- Added `download_file` tool to download files to disk (supports relative and absolute `destinationFolder`; the server creates the destination folder if it does not exist).
+- Added streaming download implementation using Node streams and pipeline for robust file writes.
+- `fetch_api` now requires a `limit` parameter (number). The REST client will truncate response output to at most `limit` characters to avoid oversized outputs.
+- `fetch_api` is marked `autoApprove` in the MCP tool listing so it can be invoked without interactive approval by compatible MCP hosts.
+- Response metadata for `fetch_api`: returned object includes `bodyLength` (original body length in characters) and `truncated` (boolean indicating whether the body was truncated).
+
+### Fixes & Improvements
+
+- Accept relative paths for `download_file` `destinationFolder`; resolve against `process.cwd()` (previously required absolute path).
+- Ensure `logs/` directory is created at startup to prevent logging failures when appending to `logs/error-log.txt`.
+- Remove duplicate `download_file` handler in `CallToolRequestSchema`.
+- Documentation: clarify `download_file` `destinationFolder` behavior in `README.md`.
+- Improve robustness of error logging when writing to disk.
+- Updated internal calls to `fetchApi` to provide a sensible default `limit` of 1000 characters.
+- Documentation: README and tool schema updated to document the required `limit` parameter and auto-approve behavior.
+
+
 ## [1.0.2] - 2025-08-14
 
 ### Minor Enhancements
