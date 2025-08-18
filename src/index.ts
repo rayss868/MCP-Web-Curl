@@ -94,36 +94,7 @@ class WebCurlServer {
       console.error('[MCP Error]', error);
     };
 
-    // Prevent error log accumulation: rotate or limit log file size
-    const logsDir = path.join(process.cwd(), 'logs');
-    // Ensure logs directory exists so subsequent appends won't fail
-    try { fs.mkdirSync(logsDir, { recursive: true }); } catch (e) {}
-    const errorLogPath = path.join(logsDir, 'error-log.txt');
-    try {
-      if (fs.existsSync(errorLogPath)) {
-        const stats = fs.statSync(errorLogPath);
-        // Limit log file to 1MB, rotate if exceeded
-        if (stats.size > 1024 * 1024) {
-          fs.renameSync(errorLogPath, errorLogPath + '.bak');
-        }
-      }
-    } catch (e) {
-      // Ignore log rotation errors
-    }
-
-    // Cleanup old temp files in logs directory at startup
-    try {
-      if (fs.existsSync(logsDir)) {
-        const files = fs.readdirSync(logsDir);
-        for (const file of files) {
-          if (/^puppeteer_tmp|^chromium_tmp|\.bak$/.test(file)) {
-            fs.unlinkSync(path.join(logsDir, file));
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore cleanup errors
-    }
+    // Logging to disk is disabled
 
     process.on('SIGINT', async () => {
       await this.server.close();
@@ -430,15 +401,6 @@ class WebCurlServer {
 
         } catch (error: any) {
             console.error('Error fetching webpage:', error);
-            try {
-                const logsDir = path.join(process.cwd(), 'logs');
-                fs.appendFileSync(
-                    path.join(logsDir, 'error-log.txt'),
-                    `[${new Date().toISOString()}] Error during fetch_webpage "${url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
-                );
-            } catch (err) {
-                console.error('Failed to log error:', err);
-            }
             return {
                 content: [{ type: 'text', text: `Error fetching webpage: ${error.message}` }],
                 isError: true,
@@ -463,15 +425,6 @@ class WebCurlServer {
           };
         } catch (error: any) {
           console.error('Error calling fetch_api:', error);
-           try {
-            const logsDir = path.join(process.cwd(), 'logs');
-            fs.appendFileSync(
-              path.join(logsDir, 'error-log.txt'),
-              `[${new Date().toISOString()}] Error during fetch_api "${args.url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
-            );
-          } catch (err) {
-            console.error('Failed to log error:', err);
-          }
           return {
             content: [
               {
@@ -559,15 +512,6 @@ class WebCurlServer {
           };
         } catch (error: any) {
           console.error('Error calling google_search:', error);
-          try {
-            const logsDir = path.join(process.cwd(), 'logs');
-            fs.appendFileSync(
-              path.join(logsDir, 'error-log.txt'),
-              `[${new Date().toISOString()}] Error during google_search: ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
-            );
-          } catch (err) {
-            console.error('Failed to log error:', err);
-          }
           return {
             content: [
               {
@@ -746,15 +690,6 @@ class WebCurlServer {
           };
         } catch (error: any) {
           console.error('Error calling download_file:', error);
-          try {
-            const logsDir = path.join(process.cwd(), 'logs');
-            fs.appendFileSync(
-              path.join(logsDir, 'error-log.txt'),
-              `[${new Date().toISOString()}] Error during download_file "${validatedArgs.url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
-            );
-          } catch (err) {
-            console.error('Failed to log error:', err);
-          }
           return {
             content: [{ type: 'text', text: `Error downloading file: ${error.message}` }],
             isError: true,
@@ -928,14 +863,6 @@ class WebCurlServer {
       return filePath; // Return the path to the downloaded file
     } catch (error: any) {
       console.error('Error downloading file:', error);
-      try {
-        fs.appendFileSync(
-          path.join(logsDir, 'error-log.txt'),
-          `[${new Date().toISOString()}] Error during download_file "${url}": ${error}\n${error instanceof Error ? error.stack : ''}\n\n`
-        );
-      } catch (err) {
-        console.error('Failed to log error:', err);
-      }
       throw new Error(`Failed to download file: ${error.message}`);
     }
   }
