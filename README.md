@@ -27,7 +27,7 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 ---
 
 <div align="center">
-  <a href="https://github.com/rayss868/MCP-Web-Curl">
+  <a href="https://glama.ai/mcp/servers/@rayss868/MCP-Web-Curl">
     <img width="380" height="200" src="https://glama.ai/mcp/servers/@rayss868/MCP-Web-Curl/badge" alt="Web-curl Server MCP server" />
   </a>
 </div>
