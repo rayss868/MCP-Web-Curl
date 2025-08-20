@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.0.5] - 2025-08-20
+
+### Changed
+
+- Replaced `node-fetch` with the native global `fetch` API for reduced dependencies and improved project setup.
+- Updated `README.md` with enhanced documentation, including a Mermaid architecture diagram, clarified feature descriptions, and updated installation notes.
+
+## [1.0.4] - 2025-08-19
+
+### Changed
+
+- **`fetch_webpage` tool updates:**
+    - Implemented whitespace removal from fetched HTML content.
+    - Modified content slicing to operate on the whitespace-removed HTML.
+    - Updated response to include `startIndex`, `maxLength`, `remainingCharacters`, and a clear `instruction` for fetching subsequent chunks (now includes a suggestion to stop if enough information is gathered).
+    - `blockResources` parameter is now always forced to `false` within the `fetch_webpage` tool, effectively disabling resource blocking. Related automatic retry logic was removed.
+    - The CLI default for `blockResources` was also changed to `false`.
+    - Removed `chunkOverlap` parameter and related logic.
+    - Removed `totalChunks` and `currentChunk` from the `fetch_webpage` tool's final response.
+
+### Fixed
+
+- Resolved TypeScript errors related to `chunkOverlap` references across the codebase.
+
 ## [1.0.3] - 2025-08-16
 
 ### Added
@@ -39,7 +63,7 @@
 ### Major Enhancements
 
 - **Modularized all tool handlers** in `src/index.ts` for maintainability and extensibility.
-- **Advanced smart_command**: 
+- **Advanced smart_command**:
   - Automatic language detection (using `franc-min`).
   - Auto-translate to English (using `translate`) if needed.
   - Query enrichment for better Google Search results.

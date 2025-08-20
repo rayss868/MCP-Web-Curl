@@ -85,9 +85,9 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 - 🧹 Logs & temp cleanup: old temporary files in the `logs/` directory are cleaned up at startup.
 - 🛑 Browser lifecycle: Puppeteer browser instances are closed in finally blocks to avoid Chromium temp file leaks.
 - 🔎 Content extraction:
-  - Returns raw text, HTML, and Readability "main article" when available.
+  - Returns raw text, HTML, and Readability "main article" when available. Readability attempts to extract the primary content of a webpage, removing headers, footers, sidebars, and other non-essential elements, providing a cleaner, more focused text.
   - Readability output is subject to `startIndex`/`maxLength`/`chunkSize` slicing when requested.
-- 🚫 Resource blocking: images, stylesheets, and fonts can be blocked for faster page loads.
+- 🚫 Resource blocking: `blockResources` is now always forced to `false`, meaning resources are never blocked for faster page loads.
 - ⏱️ Timeout control: navigation and API request timeouts are configurable via tool arguments.
 - 💾 Output: results can be printed to stdout or written to a file via CLI options.
 - ⬇️ Download behavior (`download_file`):
@@ -107,7 +107,8 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
   - Query enrichment is heuristic-based; results depend on the detected intent.
 - 📄 fetch_webpage specifics:
   - Multi-page crawling via `nextPageSelector` (tries href first, falls back to clicking the element).
-  - Use `chunkSize` + `chunkOverlap` for deterministic chunking; legacy `maxLength` is still supported but `chunkSize` is preferred.
+  - Content is now whitespace-removed from the entire HTML before slicing.
+  - Returns sliced content, total characters (after whitespace removal), `startIndex`, `maxLength`, `remainingCharacters`, and an `instruction` for fetching more content (includes a suggestion to stop if enough information is gathered).
   - Required parameters: `startIndex` (or alias `index`) and at least one of `chunkSize` (preferred), `limit` (alias), or `maxLength` must be provided and be a number. Calls missing these required parameters will be rejected with an InvalidParams error. Set these values according to your needs; they may not be empty.
   - Validation behavior: runtime validation is enforced in `src/index.ts` and the MCP tool will throw/reject when required parameters are missing or invalid. If you prefer automatic fallbacks instead of rejection, modify the validation logic in `src/index.ts`.
 - 🛡️ Debug & Logging
@@ -115,15 +116,15 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
   - Debug flag: some CLI/tool paths accept a `debug` argument which enables more verbose console logging; not all code paths consistently honor a `debug` flag yet. Prefer inspecting `logs/error-log.txt` for complete traces.
   - To enable console-level debug consistently, a small code change to read a `DEBUG=true` env var or a global `--debug` CLI option can be added (recommended for development).
 - ⚙️ Compatibility & Build notes
-  - The project currently depends on `node-fetch` but targets Node 18+, which provides a global `fetch`. Consider replacing `node-fetch` with the global `fetch` to remove the dependency and avoid cross-version issues.
+  - The project now utilizes the native global `fetch` API available in Node.js 18+, eliminating the need for the `node-fetch` dependency. This simplifies the dependency tree and leverages built-in capabilities.
   - `npm run build` runs `tsc` and a `chmod` step that is no-op on Windows; CI or cross-platform scripts should guard `chmod` with a platform check.
 - 🔐 Security considerations
   - SSRF: validate/whitelist destination hosts if exposing `fetch_api`/`fetch_webpage` publicly.
   - Rate limiting & auth: add request rate limiting and access controls for public deployments.
   - Puppeteer flags: `--no-sandbox` reduces isolation; only use it where required and understand the risk on multi-tenant systems.
 - 🧪 Tests & linting
-  - Linting: `npm run lint` is provided; include a pre-commit hook (husky) to enforce linting in CI.
-  - Tests: no unit tests are included yet. Adding simple integration tests for `fetch_api` and `download_file` is recommended.
+  - Linting: `npm run lint` is provided; including a pre-commit hook (e.g., using `husky` and `lint-staged`) is recommended to enforce linting standards before commits, ensuring code quality.
+  - Tests: Currently, no unit tests are included. Future plans involve adding comprehensive integration tests for core functionalities like `fetch_api` and `download_file` to ensure reliability and prevent regressions.
 - 📑 All tool schemas and documentation are in English for clarity.
 
 ---
@@ -131,13 +132,29 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 <a name="architecture"></a>
 ## 🏗️ Architecture
 
-- **CLI & MCP Server**: [`src/index.ts`](src/index.ts)  
-  Implements both the CLI entry point and the MCP server, exposing tools like `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
-- **Web Scraping**: Uses Puppeteer for headless browsing, resource blocking, and content extraction.
-- **REST Client**: [`src/rest-client.ts`](src/rest-client.ts)  
-  Provides a flexible HTTP client for API requests, used by both CLI and MCP tools.
-- **Configuration**: Managed via CLI options, environment variables, and tool arguments.
-  - Note: the server creates `logs/` at startup and resolves relative paths against `process.cwd()`. Tools exposed include `download_file` (streaming writes), `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
+This section outlines the high-level architecture of Web-curl.
+
+```mermaid
+graph TD
+    A[User/MCP Host] --> B(CLI / MCP Server)
+    B --> C{Tool Handlers}
+    C -- fetch_webpage --> D["Puppeteer (Web Scraping)"]
+    C -- fetch_api --> E["REST Client"]
+    C -- google_search --> F["Google Custom Search API"]
+    C -- smart_command --> G["Language Detection & Translation"]
+    C -- download_file --> H["File System (Downloads)"]
+    D --> I["Web Content"]
+    E --> J["External APIs"]
+    F --> K["Google Search Results"]
+    H --> L["Local Storage"]
+```
+*   **CLI & MCP Server**: [`src/index.ts`](src/index.ts)
+    Implements both the CLI entry point and the MCP server, exposing tools like `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
+*   **Web Scraping**: Uses Puppeteer for headless browsing, resource blocking, and content extraction.
+*   **REST Client**: [`src/rest-client.ts`](src/rest-client.ts)
+    Provides a flexible HTTP client for API requests, used by both CLI and MCP tools.
+*   **Configuration**: Managed via CLI options, environment variables, and tool arguments.
+    *   Note: the server creates `logs/` at startup and resolves relative paths against `process.cwd()`. Tools exposed include `download_file` (streaming writes), `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
 
 ---
 <a name="installation"></a>
@@ -175,18 +192,19 @@ To integrate web-curl as an MCP server, add the following configuration to your 
 
 ### 🔑 How to Obtain Google API Key and CX
 
-1. **Get a Google API Key:**  
-   - Go to [Google Cloud Console](https://console.cloud.google.com/).
-   - Create/select a project, then go to **APIs & Services > Credentials**.
-   - Click **Create Credentials > API key** and copy it.
+1.  **Get a Google API Key:**
+    - Go to [Google Cloud Console](https://console.cloud.google.com/).
+    - Create/select a project, then go to **APIs & Services > Credentials**.
+    - Click **Create Credentials > API key** and copy it.
+    *   **Note**: API key activation might take some time. Also be aware of Google's usage quotas for the free tier.
 
-2. **Get a Custom Search Engine (CX) ID:**  
-   - Go to [Google Custom Search Engine](https://cse.google.com/cse/all).
-   - Create/select a search engine, then copy the **Search engine ID** (CX).
+2.  **Get a Custom Search Engine (CX) ID:**
+    - Go to [Google Custom Search Engine](https://cse.google.com/cse/all).
+    - Create/select a search engine, then copy the **Search engine ID** (CX).
 
-3. **Enable Custom Search API:**  
-   - In Google Cloud Console, go to **APIs & Services > Library**.
-   - Search for **Custom Search API** and enable it.
+3.  **Enable Custom Search API:**
+    - In Google Cloud Console, go to **APIs & Services > Library**.
+    - Search for **Custom Search API** and enable it.
 
 Replace `YOUR_GOOGLE_API_KEY` and `YOUR_CX_ID` in the config above.
 
@@ -206,6 +224,7 @@ npm install
 # Build the project
 npm run build
 ```
+*   **Prerequisites**: Ensure you have Node.js (v18+) and Git installed on your system.
 
 ### Puppeteer installation notes
 
@@ -244,7 +263,7 @@ node build/index.js -o result.json https://example.com
 #### Command Line Options
 
 - `--timeout <ms>`: Set navigation timeout (default: 60000)
-- `--no-block-resources`: Disable blocking of images, stylesheets, and fonts
+- `--no-block-resources`: This option is now deprecated as resource blocking is always disabled by default.
 - `-o <file>`: Output result to specified file
 
 ### MCP Server Usage
@@ -274,7 +293,6 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
   "name": "fetch_webpage",
   "arguments": {
     "url": "https://example.com",
-    "blockResources": true,
     "timeout": 60000,
     "maxLength": 10000
   }
@@ -283,20 +301,19 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
 
 ---
 
-### 🚦 Chunked Fetch Example (Recommended for Large Pages)
+### 🚦 Content Slicing Example (Recommended for Large Pages)
 
-For large documents use deterministic chunking with `chunkSize` and `chunkOverlap`. The server supports `chunkSize` (preferred) and `chunkOverlap` to preserve context between chunks. Example workflow:
+For large documents, you can fetch content in slices using `startIndex` and `maxLength`. The server will return the sliced content, the total characters available (after whitespace removal), and an instruction for fetching the next part.
 
-Client request for first chunk:
+Client request for first slice:
 ```json
 {
   "name": "fetch_webpage",
   "arguments": {
     "url": "https://example.com/long-article",
-    "blockResources": true,
+    "blockResources": false,
     "timeout": 60000,
-    "chunkSize": 2000,     // number of characters per chunk
-    "chunkOverlap": 200,   // overlap between chunks to preserve context
+    "maxLength": 2000,     // maximum number of characters to return for this slice
     "startIndex": 0
   }
 }
@@ -305,34 +322,31 @@ Client request for first chunk:
 Server response (example):
 ```json
 {
-  "text": "First 2000 characters...",
+  "url": "https://example.com/long-article",
+  "title": "Long Article Title",
+  "content": "First 2000 characters of the whitespace-removed HTML...",
+  "fetchedAt": "2025-08-19T15:00:00.000Z",
   "startIndex": 0,
-  "nextStartIndex": 1800,   // nextStartIndex = startIndex + (chunkSize - chunkOverlap)
-  "chunkSize": 2000,
-  "chunkOverlap": 200,
-  "isLastChunk": false
+  "maxLength": 2000,
+  "remainingCharacters": 8000, // Total characters - (startIndex + content.length)
+  "instruction": "To fetch more content, call fetch_webpage again with startIndex=2000."
 }
 ```
 
-Client fetches the next chunk by setting `startIndex` to `nextStartIndex`:
+Client fetches the next slice by setting `startIndex` to the previous `startIndex + content.length`:
 ```json
 {
   "name": "fetch_webpage",
   "arguments": {
     "url": "https://example.com/long-article",
-    "chunkSize": 2000,
-    "chunkOverlap": 200,
-    "startIndex": 1800
+    "maxLength": 2000,
+    "startIndex": 2000 // From the instruction in the previous response
   }
 }
 ```
 
-- Continue until `isLastChunk: true`.
-- Reassemble the full content by concatenating each `text` in order, trimming the overlapped region if desired (or keeping overlaps if you prefer redundant context).
-- Notes:
-  - `chunkSize`/`chunkOverlap` operate on characters (deterministic) in the current implementation.
-  - If `chunkSize` is not provided, legacy `maxLength`/`startIndex` slicing is used.
-  - The server returns `nextStartIndex` and `isLastChunk` to make client loop logic simple and deterministic.
+- Continue fetching until `remainingCharacters` is 0 and the `instruction` indicates all content has been fetched.
+- The `content` field will contain the sliced, whitespace-removed HTML.
 
 #### Google Search Integration
 
@@ -354,8 +368,7 @@ Set the following environment variables for Google Custom Search:
 
 ---
 
-<a name="examples"></a>
-## 💡 Examples
+## 💡 Examples {#examples}
 
 <details>
 <summary>Fetch Webpage Content (with main article extraction and multi-page crawling)</summary>
@@ -428,8 +441,7 @@ Note: `destinationFolder` can be either a relative path (resolved against the cu
 </details>
 
 ---
-<a name="troubleshooting"></a>
-## 🛠️ Troubleshooting
+## 🛠️ Troubleshooting {#troubleshooting}
 
 - **Timeout Errors**: Increase the `timeout` parameter if requests are timing out.
 - **Blocked Content**: If content is missing, try disabling resource blocking or adjusting `resourceTypesToBlock`.
@@ -439,14 +451,13 @@ Note: `destinationFolder` can be either a relative path (resolved against the cu
 
 ---
 
-<a name="tips--best-practices"></a>
-## 🧠 Tips & Best Practices
+## 🧠 Tips & Best Practices {#tips--best-practices}
 
 <details>
 <summary>Click for advanced tips</summary>
 
-- Use resource blocking for faster and lighter scraping unless you need images or styles.
-- For large pages, use `maxLength` and `startIndex` to paginate content extraction.
+- Resource blocking is always disabled, ensuring faster and lighter scraping.
+- For large pages, use `maxLength` and `startIndex` to fetch content in slices. The server will provide `remainingCharacters` and an `instruction` for fetching the next part (includes a suggestion to stop if enough information is gathered).
 - Always validate your tool arguments to avoid errors.
 - Secure your API keys and sensitive data using environment variables.
 - Review the MCP tool schemas in [`src/index.ts`](src/index.ts) for all available options.
@@ -455,16 +466,14 @@ Note: `destinationFolder` can be either a relative path (resolved against the cu
 
 ---
 
-<a name="contributing--issues"></a>
-## 🤝 Contributing & Issues
+## 🤝 Contributing & Issues {#contributing--issues}
 
 Contributions are welcome! If you want to contribute, fork this repository and submit a pull request.  
 If you find any issues or have suggestions, please open an issue on the repository page.
 
 ---
 
-<a name="license--attribution"></a>
-## 📄 License & Attribution
+## 📄 License & Attribution {#license--attribution}
 
 This project was developed by **Rayss**.  
 For questions, improvements, or contributions, please contact the author or open an issue in the repository.

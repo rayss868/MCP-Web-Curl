@@ -1,4 +1,3 @@
-import fetch, { RequestInit, Response } from 'node-fetch';
 
 // Define the interface for the fetch_api tool arguments
 export interface FetchApiArgs {
@@ -46,6 +45,8 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
       method,
       headers,
       signal: controller.signal,
+      // The `timeout` option is specific to `node-fetch` and not part of the standard `RequestInit`.
+      // The timeout logic is now handled manually using AbortController.
     };
 
     if (body !== undefined) {
