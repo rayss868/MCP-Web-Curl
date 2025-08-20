@@ -10,9 +10,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
-import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
 import { franc } from 'franc-min';
-import fetch from 'node-fetch'; // Import fetch
 import { Readable } from 'stream'; // Import Readable for Node.js stream
 import { pipeline } from 'node:stream/promises'; // Import pipeline for robust stream handling
 let translate: any;
@@ -29,8 +27,6 @@ import { Readability } from '@mozilla/readability';
    timeout?: number;
    maxLength?: number;
   startIndex?: number;
-  chunkSize?: number;
-  chunkOverlap?: number;
   nextPageSelector?: string;
   maxPages?: number;
   headers?: Record<string, string>;
@@ -79,7 +75,7 @@ class WebCurlServer {
     this.server = new Server(
       {
         name: 'web-curl',
-        version: '1.0.3',
+        version: '1.0.5',
       },
       {
         capabilities: {
@@ -128,27 +124,15 @@ class WebCurlServer {
               },
               timeout: {
                 type: 'number',
-                description: 'Navigation timeout in milliseconds (default: 60000)'
+                description: 'Navigation timeout in milliseconds (default: 120000)'
               },
               maxLength: {
                 type: 'number',
-                description: 'DEPRECATED. Use chunkSize instead. Maximum number of characters to return (default: 4000).'
+                description: 'Maximum number of characters to return (default: 10000).'
               },
               startIndex: {
                 type: 'number',
                 description: 'Start character index for content extraction (required; default: 0).'
-              },
-              chunkSize: {
-                type: 'number',
-                description: 'The size of each content chunk in characters. When provided, the tool enters chunking mode. (Preferred; required unless legacy "limit" or "maxLength" provided).'
-              },
-              limit: {
-                type: 'number',
-                description: 'Alias for chunkSize (legacy). Accepts same values as chunkSize.'
-              },
-              chunkOverlap: {
-                type: 'number',
-                description: 'Number of characters to overlap between chunks to maintain context. (Default: 200).'
               },
               headers: {
                 type: 'object',
@@ -172,13 +156,8 @@ class WebCurlServer {
               },
             },
             required: ['url', 'startIndex'],
-            anyOf: [
-              { required: ['chunkSize'] },
-              { required: ['limit'] },
-              { required: ['maxLength'] }
-            ],
             additionalProperties: false,
-          description: 'Fetch web content (text, html, mainContent, metadata, supports multi-page crawling, and AI-friendly regex extraction). Debug option for verbose output/logging.'
+            description: 'Fetch web content (text, html, mainContent, metadata, supports multi-page crawling, and AI-friendly regex extraction). Debug option for verbose output/logging.'
           },
         },
         {
@@ -216,7 +195,7 @@ class WebCurlServer {
             },
             required: ['url', 'method', 'limit'],
             additionalProperties: false,
-          description: 'HTTP API request (GET/POST/etc), custom header/body, timeout, debug mode for verbose output/logging.'
+            description: 'HTTP API request (GET/POST/etc), custom header/body, timeout, debug mode for verbose output/logging.'
           },
         },
         {
@@ -227,7 +206,7 @@ class WebCurlServer {
             properties: {
               query: {
                 type: 'string',
-                description: 'Search query'
+                description: 'Search query, including any operators like site:, filetype:, etc.'
               },
               num: {
                 type: 'number',
@@ -236,27 +215,11 @@ class WebCurlServer {
               start: {
                 type: 'number',
                 description: 'Index of the first result to return (optional)'
-              },
-              language: {
-                type: 'string',
-                description: 'Restrict results to documents in this language (e.g. "lang_en", "lang_id")'
-              },
-              region: {
-                type: 'string',
-                description: 'Region code for search localization (e.g. "ID", "US")'
-              },
-              site: {
-                type: 'string',
-                description: 'Restrict results to a specific site/domain'
-              },
-              dateRestrict: {
-                type: 'string',
-                description: 'Restrict results to recent documents (e.g. "d1"=1 day, "w1"=1 week, "m1"=1 month, "y1"=1 year)'
               }
             },
             required: ['query'],
             additionalProperties: false,
-          description: 'Google Custom Search API, supports advanced filters (language, region, site, dateRestrict), debug mode for verbose output/logging.'
+            description: 'Search the web using Google Custom Search API.'
           },
         },
         {
@@ -272,7 +235,7 @@ class WebCurlServer {
             },
             required: ['command'],
             additionalProperties: false,
-          description: 'Free-form command: auto fetch if link detected, auto search if query. Debug option for verbose output/logging.'
+            description: 'Free-form command: auto fetch if link detected, auto search if query. Debug option for verbose output/logging.'
           }
         },
         {
@@ -308,12 +271,8 @@ class WebCurlServer {
         }
 
         // Map legacy/alias params to current names:
-        // - 'limit' -> chunkSize
         // - 'index' -> startIndex
         try {
-          if (typeof (args as any).limit === 'number' && typeof (args as any).chunkSize !== 'number') {
-            (args as any).chunkSize = (args as any).limit;
-          }
           if (typeof (args as any).index === 'number' && typeof (args as any).startIndex !== 'number') {
             (args as any).startIndex = (args as any).index;
           }
@@ -322,32 +281,28 @@ class WebCurlServer {
         }
 
         // Enforce required parameters (runtime validation).
-        // Requirement based on confirmation: require startIndex (or index) and at least one of chunkSize/limit/maxLength.
         const hasStartIndex = typeof (args as any).startIndex === 'number';
-        const hasChunkish = typeof (args as any).chunkSize === 'number' || typeof (args as any).limit === 'number' || typeof (args as any).maxLength === 'number';
+        const hasMaxLength = typeof (args as any).maxLength === 'number';
+
         if (!hasStartIndex) {
           throw new McpError(ErrorCode.InvalidParams, "fetch_webpage: required parameter 'startIndex' (or alias 'index') is missing or not a number");
         }
-        if (!hasChunkish) {
-          throw new McpError(ErrorCode.InvalidParams, "fetch_webpage: required parameter 'chunkSize' (or alias 'limit' / 'maxLength') is missing or not a number");
+        if (!hasMaxLength) {
+          throw new McpError(ErrorCode.InvalidParams, "fetch_webpage: required parameter 'maxLength' is missing or not a number");
         }
 
-        const validatedArgs = args as FetchWebpageArgs & { 
-            chunkSize?: number; 
-            chunkOverlap?: number;
+        const validatedArgs = args as FetchWebpageArgs & {
             nextPageSelector?: string;
             maxPages?: number;
         };
 
         const {
             url,
-            blockResources = true,
+            blockResources = false,
             resourceTypesToBlock,
             timeout: rawTimeout,
-            maxLength: deprecatedMaxLength,
+            maxLength = 4000,
             startIndex = 0,
-            chunkSize,
-            chunkOverlap = 200,
             headers,
             username,
             password,
@@ -355,75 +310,191 @@ class WebCurlServer {
             maxPages = 1
         } = validatedArgs;
 
-        const timeout = Math.min(rawTimeout || 60000, 120000);
-        const isChunking = typeof chunkSize === 'number';
-        const maxLength = chunkSize ?? deprecatedMaxLength ?? 4000;
+        const timeout = Math.min(rawTimeout || 60000, 300000);
 
-        try {
-            const result: any = await this.fetchWebpage(url, {
-                blockResources,
-                resourceTypesToBlock,
-                timeout,
-                maxLength,
-                startIndex,
-                headers,
-                username,
-                password,
-                nextPageSelector,
-                maxPages,
-                chunkOverlap
+        // Helper function to perform the fetch and process the result
+        const performFetchAndProcess = async (currentArgs: typeof validatedArgs) => {
+            const result: any = await this.fetchWebpage(currentArgs.url, {
+                blockResources: currentArgs.blockResources ?? false, // Provide default
+                resourceTypesToBlock: currentArgs.resourceTypesToBlock,
+                timeout: currentArgs.timeout ?? 30000, // Provide default
+                maxLength: currentArgs.maxLength ?? 4000, // Provide default
+                startIndex: currentArgs.startIndex ?? 0, // Provide default
+                headers: currentArgs.headers,
+                username: currentArgs.username,
+                password: currentArgs.password,
+                nextPageSelector: currentArgs.nextPageSelector,
+                maxPages: currentArgs.maxPages ?? 1, // Provide default
             });
 
-            // If chunking, provide clear info about the next step
-            if (isChunking && typeof result.contentLength === 'number' && result.contentLength > 0) {
-                const effectiveOverlap = result.textContent.length > chunkOverlap ? chunkOverlap : 0;
-                const nextStartIndex = startIndex + maxLength - effectiveOverlap;
-                const isLastChunk = (startIndex + maxLength) >= result.contentLength;
+            const totalCharacters = result.contentLength; // total characters of the whitespace-removed HTML
+            const slicedContentLength = result.content.length; // length of the sliced part
 
-                const chunkInfo = {
-                    ...result,
-                    nextStartIndex: isLastChunk ? null : nextStartIndex,
-                    isLastChunk,
-                    instruction: isLastChunk
-                        ? 'This is the last chunk. The entire content has been fetched.'
-                        : `To fetch the next chunk, call fetch_webpage again with startIndex=${nextStartIndex}.`,
-                };
+            const remainingCharacters = Math.max(0, totalCharacters - (currentArgs.startIndex + slicedContentLength));
+            const nextStartIndex = currentArgs.startIndex + slicedContentLength; // The next start index should be right after the current sliced content
 
-                return {
-                    content: [{ type: 'text', text: JSON.stringify(chunkInfo, null, 2) }],
-                };
-            }
+            const instruction = remainingCharacters === 0
+                ? "All content has been fetched."
+                : `To fetch more content, call fetch_webpage again with startIndex=${nextStartIndex}. If you have enough information, you can stop.`;
 
-            // Standard, non-chunked response
-            return {
-                content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            const finalResponse = {
+                url: result.url,
+                title: result.title,
+                content: result.content, // This is the sliced, whitespace-removed HTML
+                fetchedAt: result.fetchedAt,
+                startIndex: currentArgs.startIndex,
+                maxLength: currentArgs.maxLength,
+                remainingCharacters: remainingCharacters,
+                instruction: instruction,
             };
 
-        } catch (error: any) {
+            return {
+                content: [{ type: 'text', text: JSON.stringify(finalResponse, null, 2) }],
+            };
+        };
+
+        try {
+            return await performFetchAndProcess(validatedArgs);
+        } catch (error: any) { // Catch block for fetch_webpage
+            let errorMessage = `Error fetching webpage: ${error.message}`;
+
+            // Check for timeout error and suggest disabling blockResources
+            // Removed automatic retry logic as blockResources is now always false.
+            // The default behavior is now to not block resources.
+
+            // If still a timeout, you might consider a generic message or further options.
+            // For now, it will just return the original error message.
+
+            // Note: The previous logic for suggesting 'blockResources: false' is removed
+            // because blockResources is now forced to false by default for all calls.
+
             console.error('Error fetching webpage:', error);
             return {
-                content: [{ type: 'text', text: `Error fetching webpage: ${error.message}` }],
+                content: [{ type: 'text', text: `Error fetching webpage: ${errorMessage}` }],
                 isError: true,
             };
         }
       } else if (toolName === 'fetch_api') {
-        if (!isValidFetchApiArgs(args)) {
+        // Define an interface for fetch_api arguments directly here
+        interface DirectFetchApiArgs {
+          url: string;
+          method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+          headers?: Record<string, string>;
+          body?: any;
+          timeout?: number;
+          limit: number;
+        }
+
+        const isValidDirectFetchApiArgs = (a: any): a is DirectFetchApiArgs => {
+          return (
+            typeof a === 'object' &&
+            a !== null &&
+            typeof a.url === 'string' &&
+            ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'].includes(a.method) &&
+            (a.headers === undefined || (typeof a.headers === 'object' && a.headers !== null && !Array.isArray(a.headers))) &&
+            (a.timeout === undefined || typeof a.timeout === 'number') &&
+            (typeof a.limit === 'number')
+          );
+        };
+
+        if (!isValidDirectFetchApiArgs(args)) {
           throw new McpError(
             ErrorCode.InvalidParams,
             'Invalid fetch_api arguments'
           );
         }
+
+        const { url, method, headers, body, timeout = 60000, limit } = args as DirectFetchApiArgs;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
         try {
-          const result = await fetchApi(args as FetchApiArgs);
+          let options: RequestInit = {
+            method,
+            headers,
+            signal: controller.signal,
+          };
+
+          if (body !== undefined && body !== null) {
+            options = {
+              ...options,
+              body: (typeof body === 'object' && headers && headers['Content-Type'] === 'application/json') ? JSON.stringify(body) : body
+            };
+          }
+
+          const response = await fetch(url, options as any);
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          let responseBody: any;
+          const contentType = response.headers.get('content-type');
+
+          if (contentType && contentType.includes('application/json')) {
+            responseBody = await response.json();
+          } else if (contentType && (contentType.includes('text/') || contentType.includes('application/xml') || contentType.includes('application/xhtml+xml'))) {
+            responseBody = await response.text();
+          } else {
+            try {
+              const buffer = await response.arrayBuffer();
+              responseBody = Buffer.from(buffer).toString('base64');
+            } catch (e) {
+              responseBody = 'Could not parse body (binary or unknown content type)';
+            }
+          }
+
+          const responseHeaders: Record<string, string> = {};
+          response.headers.forEach((value, name) => {
+            responseHeaders[name] = value;
+          });
+
+          let fullBodyString: string;
+          try {
+            if (typeof responseBody === 'string') {
+              fullBodyString = responseBody;
+            } else {
+              fullBodyString = JSON.stringify(responseBody);
+            }
+          } catch (e) {
+            fullBodyString = String(responseBody);
+          }
+
+          const bodyLength = fullBodyString.length;
+          let truncated = false;
+          let finalBody: any = responseBody;
+
+          if (typeof limit === 'number' && bodyLength > limit) {
+            finalBody = fullBodyString.substring(0, limit);
+            truncated = true;
+          } else {
+            finalBody = responseBody;
+          }
+
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(result, null, 2),
+                text: JSON.stringify({
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: responseHeaders,
+                  body: finalBody,
+                  ok: response.ok,
+                  url: response.url,
+                  bodyLength,
+                  truncated,
+                }, null, 2),
               },
             ],
           };
         } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            throw new Error(`Request timed out after ${timeout / 1000} seconds`);
+          }
           console.error('Error calling fetch_api:', error);
           return {
             content: [
@@ -451,14 +522,10 @@ class WebCurlServer {
           );
         }
         // Accept advanced arguments; apiKey/cx from resource
-        const { query, num, start, language, region, site, dateRestrict } = args as {
+        const { query, num, start } = args as {
           query: string;
           num?: number;
           start?: number;
-          language?: string;
-          region?: string;
-          site?: string;
-          dateRestrict?: string;
         };
 
         // Use config from resource
@@ -468,39 +535,42 @@ class WebCurlServer {
           throw new McpError(ErrorCode.InvalidParams, 'Google Search API key and cx not set. Please set APIKEY_GOOGLE_SEARCH and CX_GOOGLE_SEARCH in environment variable.');
         }
 
-        let finalQuery = query;
-        if (site) finalQuery += ` site:${site}`;
         const url = new URL('https://www.googleapis.com/customsearch/v1');
         url.searchParams.set('key', apiKey);
         url.searchParams.set('cx', cx);
-        url.searchParams.set('q', finalQuery);
+        url.searchParams.set('q', query);
         if (num !== undefined) url.searchParams.set('num', String(num));
         if (start !== undefined) url.searchParams.set('start', String(start));
-        if (language) url.searchParams.set('lr', language);
-        if (region) url.searchParams.set('gl', region);
-        if (dateRestrict) url.searchParams.set('dateRestrict', dateRestrict);
 
           try {
-            const result = await fetchApi({
-              url: url.toString(),
-              method: 'GET',
-              headers: {},
-              timeout: 20000,
-              limit: 1000,
-            });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000); // Apply timeout manually
 
-          // Format only the relevant search results
-          let formatted;
-          if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
-            formatted = result.body.items.map((item: any) => ({
-              title: item.title,
-              link: item.link,
-              snippet: item.snippet,
-              displayLink: item.displayLink,
-            }));
-          } else {
-            formatted = result.body;
-          }
+            const response = await fetch(url.toString(), {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              signal: controller.signal // Use abort signal for timeout
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json(); // Parse JSON directly
+
+            let formatted;
+            if (data && Array.isArray(data.items)) {
+              formatted = data.items.map((item: any) => ({
+                title: item.title,
+                link: item.link,
+                snippet: item.snippet,
+              }));
+            } else {
+              formatted = data; // Fallback to full data if items not found
+            }
 
           return {
             content: [
@@ -534,12 +604,11 @@ class WebCurlServer {
           // This is a fetch command
           try {
             const result = await this.fetchWebpage(urlMatch[0], {
-              blockResources: true,
+              blockResources: false, // Force blockResources to be false
               timeout: 60000,
               maxLength: 4000,
               startIndex: 0,
               maxPages: 1,
-              chunkOverlap: 0
             });
             return {
               content: [
@@ -554,90 +623,6 @@ class WebCurlServer {
           }
         } else {
           // Otherwise, this is a search command
-          // 1. Deteksi bahasa
-          let detectedLang = franc(command);
-          if (detectedLang === 'und') detectedLang = 'en';
-
-          // 2. Translate to English if not already English
-          let queryEn = command;
-          if (detectedLang !== 'en') {
-            try {
-              queryEn = await translate(command, { to: 'en' });
-            } catch (e) {
-              // fallback: tetap pakai query asli
-              queryEn = command;
-            }
-          }
-
-          // 3. Query enrichment: add relevant keywords (basic intent/entity extraction + multimodal + filters)
-          let enrichedQuery = queryEn;
-
-          // Intent detection (English only)
-          if (/error|bug|fix|troubleshoot|solution/i.test(enrichedQuery)) {
-            enrichedQuery += ' solution fix stackoverflow github issue';
-          } else if (/tutorial|how to|guide|step by step|example/i.test(enrichedQuery)) {
-            enrichedQuery += ' tutorial guide step by step example';
-          } else if (/paper|research|state of the art|sota|survey/i.test(enrichedQuery)) {
-            enrichedQuery += ' paper arxiv pdf survey';
-          } else if (/download|dataset|data set/i.test(enrichedQuery)) {
-            enrichedQuery += ' dataset download filetype:csv filetype:xlsx';
-          } else if (!/news|latest|best|tips|how to|guide/i.test(enrichedQuery)) {
-            enrichedQuery += ' best tips';
-          }
-
-          // Multimodal: PDF, image, video
-          if (/pdf|document|paper/i.test(enrichedQuery)) {
-            enrichedQuery += ' filetype:pdf';
-          }
-          if (/image|photo|picture|screenshot/i.test(enrichedQuery)) {
-            enrichedQuery += ' images';
-          }
-          if (/video|youtube|mp4|webm/i.test(enrichedQuery)) {
-            enrichedQuery += ' videos';
-          }
-
-          // Google filters: inurl, intitle, filetype
-          if (/inurl:/i.test(enrichedQuery) === false && /url/i.test(enrichedQuery)) {
-            enrichedQuery += ' inurl:' + enrichedQuery.match(/\burl\s*[:=]?\s*(\S+)/i)?.[1] || '';
-          }
-          if (/intitle:/i.test(enrichedQuery) === false && /title/i.test(enrichedQuery)) {
-            enrichedQuery += ' intitle:' + enrichedQuery.match(/\btitle\s*[:=]?\s*(\S+)/i)?.[1] || '';
-          }
-          if (/filetype:/i.test(enrichedQuery) === false && /(\bpdf\b|\bimage\b|\bvideo\b)/i.test(enrichedQuery)) {
-            if (/\bpdf\b/i.test(enrichedQuery)) enrichedQuery += ' filetype:pdf';
-            if (/\bimage\b/i.test(enrichedQuery)) enrichedQuery += ' filetype:jpg filetype:png';
-            if (/\bvideo\b/i.test(enrichedQuery)) enrichedQuery += ' filetype:mp4 filetype:webm';
-          }
-
-          // Entity extraction: year
-          const yearMatch = enrichedQuery.match(/\b(20\d{2}|19\d{2})\b/);
-          if (yearMatch) {
-            enrichedQuery += ` after:${yearMatch[0]}`;
-          }
-          // Entity extraction: popular technology
-          if (/python|javascript|node|react|ai|machine learning|deep learning/i.test(enrichedQuery)) {
-            enrichedQuery += ' site:github.com site:stackoverflow.com';
-          }
-
-          // Local/global detection (region/language)
-          if (/indonesia|indonesian|id\b/i.test(enrichedQuery)) {
-            enrichedQuery += ' site:id region:ID';
-          } else if (/english|en\b|us\b|america|uk\b|britain/i.test(enrichedQuery)) {
-            enrichedQuery += ' region:US';
-          }
-
-          // Simple query expansion: synonyms for common topics
-          if (/ai|artificial intelligence/i.test(enrichedQuery)) {
-            enrichedQuery += ' machine learning deep learning neural network';
-          }
-          if (/bug|error|issue/i.test(enrichedQuery)) {
-            enrichedQuery += ' troubleshooting solution workaround';
-          }
-
-          // 4. Logging enriched query
-          let debugInfo = `Detected language: ${detectedLang}\nQuery (enriched): ${enrichedQuery}`;
-
-          // 5. Search
           const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
           const cx = process.env.CX_GOOGLE_SEARCH;
           if (!apiKey || !cx) {
@@ -646,36 +631,47 @@ class WebCurlServer {
           const url = new URL('https://www.googleapis.com/customsearch/v1');
           url.searchParams.set('key', apiKey);
           url.searchParams.set('cx', cx);
-          url.searchParams.set('q', enrichedQuery);
+          url.searchParams.set('q', command);
           try {
-            const result = await fetchApi({
-              url: url.toString(),
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000); // Apply timeout manually
+
+            const response = await fetch(url.toString(), {
               method: 'GET',
-              headers: {},
-              timeout: 20000,
-              limit: 1000,
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              signal: controller.signal // Use abort signal for timeout
             });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json(); // Parse JSON directly
+
             let formatted;
-            if (result.ok && result.body && typeof result.body === 'object' && Array.isArray(result.body.items)) {
-              formatted = result.body.items.map((item: any) => ({
+            if (data && Array.isArray(data.items)) {
+              formatted = data.items.map((item: any) => ({
                 title: item.title,
                 link: item.link,
                 snippet: item.snippet,
-                displayLink: item.displayLink,
               }));
             } else {
-              formatted = result.body;
+              formatted = data; // Fallback to full data if items not found
             }
             return {
               content: [
                 {
                   type: 'text',
-                  text: debugInfo + '\n\n' + JSON.stringify(formatted, null, 2),
+                  text: JSON.stringify(formatted, null, 2),
                 },
               ],
             };
           } catch (error: any) {
-            return { content: [{ type: 'text', text: 'Gagal search: ' + error.message }], isError: true };
+            console.error('Error during Google Search:', error);
+            return { content: [{ type: 'text', text: 'Error during Google Search: ' + error.message }], isError: true };
           }
         }
       } else if (toolName === 'download_file') {
@@ -719,7 +715,6 @@ class WebCurlServer {
       password?: string;
       nextPageSelector?: string;
       maxPages: number;
-      chunkOverlap: number;
   }) {
       const browser = await puppeteer.launch({
           headless: true,
@@ -743,7 +738,7 @@ class WebCurlServer {
               await page.setRequestInterception(true);
               page.on('request', req => {
                   const resourceType = req.resourceType();
-                  const typesToBlock = options.resourceTypesToBlock ?? ['image', 'stylesheet', 'font'];
+                  const typesToBlock = options.resourceTypesToBlock ?? [];
                   if (typesToBlock.includes(resourceType)) {
                       req.abort();
                   } else {
@@ -758,46 +753,31 @@ class WebCurlServer {
 
           while (currentPageNum <= options.maxPages) {
               console.error(`Fetching content from: ${currentUrl} (page ${currentPageNum})`);
-              await page.goto(currentUrl, { waitUntil: 'networkidle0', timeout: options.timeout });
+              await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: options.timeout });
 
               const title = await page.title();
 
               // Efficiently extract and slice content within the browser context
-              const pageContent = await page.evaluate((startIndex, maxLength) => {
-                  const body = document.body;
-                  const textContent = body.textContent?.trim() || '';
-                  const slicedText = textContent.substring(startIndex, startIndex + maxLength);
-                  return {
-                      fullContentLength: textContent.length,
-                      slicedText: slicedText,
-                  };
-              }, options.startIndex, options.maxLength);
-              
+              // 1. Get the full content from the page
               const html = await page.content();
-              
-              // Use Readability on the full HTML for better article extraction
-              let mainContent = null;
-              try {
-                const { JSDOM } = await import('jsdom');
-                const dom = new JSDOM(html, { url: currentUrl });
-                const reader = new Readability(dom.window.document);
-                mainContent = reader.parse();
-                // Also slice the readability output
-                if (mainContent && mainContent.textContent) {
-                    mainContent.textContent = mainContent.textContent.substring(options.startIndex, options.startIndex + options.maxLength);
-                }
-              } catch(e) {
-                mainContent = null; // Ignore Readability errors
-              }
+
+              // Step 1: Remove all whitespace from the raw HTML content
+              const cleanedHtml = html.replace(/\s/g, '');
+
+              // Step 2: Calculate the total character count of the cleaned HTML
+              const totalLength = cleanedHtml.length;
+
+              // Step 3: Slice the cleaned HTML based on startIndex and maxLength
+              const slicedContent = cleanedHtml.substring(options.startIndex, options.startIndex + options.maxLength);
 
               results.push({
                   url: currentUrl,
                   title,
-                  textContent: pageContent.slicedText,
-                  contentLength: pageContent.fullContentLength,
-                  mainContent: mainContent, // Contains sliced main content
+                  content: slicedContent, // Renamed from slicedContent for consistency with tool handler
+                  contentLength: totalLength, // Renamed from totalCharacters for consistency with tool handler
                   fetchedAt: new Date().toISOString(),
               });
+              console.log(`DEBUG: totalLength (after whitespace removal): ${totalLength}, startIndex: ${options.startIndex}, slicedContent length: ${slicedContent.length}`);
               
               if (!options.nextPageSelector || currentPageNum >= options.maxPages) {
                   break;
@@ -854,8 +834,15 @@ class WebCurlServer {
       const fileStream = fs.createWriteStream(filePath);
       if (response.body) {
         // Convert Web ReadableStream to Node.js Readable stream
-        const nodeReadableStream = Readable.from(response.body);
-        await pipeline(nodeReadableStream, fileStream);
+        // Convert Web ReadableStream to Node.js Readable stream
+        // For Node.js 18+, response.body is a ReadableStream (Web Streams API)
+        // For pipeline, it needs to be a Node.js Readable stream.
+        // A common way to bridge this is to convert the Web ReadableStream to an AsyncIterable
+        // and then use Readable.from. However, directly piping is often possible.
+        // If response.body is indeed a Web ReadableStream, it can often be directly piped.
+        // If not, it needs to be converted.
+        // Assuming response.body is a WHATWG ReadableStream, which is generally compatible with Node.js streams.
+        await pipeline(Readable.fromWeb(response.body as any), fileStream); // Use Readable.fromWeb for conversion
       } else {
         throw new Error('Response body is null.');
       }
@@ -881,7 +868,7 @@ if (process.argv[1] && process.argv[1].endsWith('index.js')) {
       .scriptName('web-curl')
       .usage('$0 <url> [options]')
       .option('timeout', { type: 'number', describe: 'Navigation timeout (ms)', default: 60000 })
-      .option('blockResources', { type: 'boolean', describe: 'Block images/styles/fonts', default: true })
+      .option('blockResources', { type: 'boolean', describe: 'Block images/styles/fonts', default: false })
       .option('maxLength', { type: 'number', describe: 'Max chars to extract', default: 2000 })
       .option('startIndex', { type: 'number', describe: 'Start char index', default: 0 })
       .help()
@@ -905,8 +892,7 @@ if (process.argv[1] && process.argv[1].endsWith('index.js')) {
             timeout,
             maxLength,
             startIndex,
-            maxPages: 1,
-            chunkOverlap: 0
+            maxPages: 1
           });
           console.log(JSON.stringify(result, null, 2));
         } catch (e) {
