@@ -1,6 +1,7 @@
 ### Google Custom Search API
 
 Google Custom Search API is free with usage limits (e.g., 100 queries per day for free, with additional queries requiring payment). For full details on quotas, pricing, and restrictions, see the [official documentation](https://developers.google.com/custom-search/v1/overview).
+
 # Web-curl
 
 <div align="center">
