@@ -37,16 +37,16 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 
 ## 🎬 Demo Video
 
-[![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](demo/demo_1.mp4)
+[![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4)
 
-> [Click here to watch the demo video directly in your browser.](demo/demo_1.mp4)
+> [Click here to watch the demo video directly in your browser.](https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4)
 
-If your platform supports it, you can also [download and play demo/demo_1.mp4](demo/demo_1.mp4) directly.
+If your platform supports it, you can also [download and play demo/demo_1.mp4](https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4) directly.
 
 <div align="center">
 
 <video width="640" height="360" controls autoplay>
-  <source src="demo/demo_1.mp4" type="video/mp4">
+  <source src="https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
