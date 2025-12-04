@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.6] - 2025-10-27
+
+### Added
+
+- `fetch_webpage` tool now supports an `evaluateScript` parameter, allowing arbitrary JavaScript code to be executed on the loaded page. The result of the script execution is included in the tool's output as `evaluatedScriptResult`.
+- `fetch_api` tool now supports a `redirect` parameter ('follow', 'error', 'manual') to control automatic redirection behavior.
+- `fetch_api` tool now supports a `timeout` parameter in milliseconds, allowing users to specify how long to wait for an API response before timing out.
+- `fetch_api` tool now includes `responseTimeMs` in its output, indicating the time taken for the API request in milliseconds.
+
+### Added
+
+- `fetch_api` tool now supports a `redirect` parameter ('follow', 'error', 'manual') to control automatic redirection behavior.
+- `fetch_api` tool now supports a `timeout` parameter in milliseconds, allowing users to specify how long to wait for an API response before timing out.
+- `fetch_api` tool now includes `responseTimeMs` in its output, indicating the time taken for the API request in milliseconds.
+
 ## [1.0.5] - 2025-08-20
 
 ### Changed

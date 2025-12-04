@@ -37,16 +37,16 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 
 ## 🎬 Demo Video
 
-[![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4)
+[![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](demo/demo_1.mp4)
 
-> [Click here to watch the demo video directly in your browser.](https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4)
+> [Click here to watch the demo video directly in your browser.](demo/demo_1.mp4)
 
-If your platform supports it, you can also [download and play demo/demo_1.mp4](https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4) directly.
+If your platform supports it, you can also [download and play demo/demo_1.mp4](demo/demo_1.mp4) directly.
 
 <div align="center">
 
 <video width="640" height="360" controls autoplay>
-  <source src="https://assets.rayzs.my.id/MCP-Web-Curl/demo_1.mp4" type="video/mp4">
+  <source src="demo/demo_1.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
@@ -108,7 +108,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
   - Error handling: non-2xx responses cause a thrown error; partial writes are avoided by streaming through `pipeline` and only returning the final path on success.
 - 🖥️ Usage modes: CLI and MCP server (stdin/stdout transport).
 - 🌐 REST client: `fetch_api` returns JSON/text when appropriate and base64 for binary responses.
-- Note: `fetch_api` now requires a numeric `limit` parameter; responses will be truncated to at most `limit` characters. The response object includes `bodyLength` (original length in characters) and `truncated` (boolean).
+- Note: `fetch_api` now requires a numeric `limit` parameter; responses will be truncated to at most `limit` characters. The response object includes `bodyLength` (original length in characters), `truncated` (boolean), `responseTimeMs` (number, indicating the duration of the API request in milliseconds), `timeout` (number, specifying the request timeout in milliseconds), and `redirect` (string, specifying the redirect mode: 'follow', 'error', or 'manual').
 - `fetch_api` is marked `autoApprove` in the MCP tool listing so compatible MCP hosts may invoke it without interactive approval. Internal calls in this codebase use a sensible default `limit` of 1000 characters where applicable.
 - 🔍 Google Custom Search: requires `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH`.
 - 🤖 Smart command:
@@ -118,6 +118,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
   - Multi-page crawling via `nextPageSelector` (tries href first, falls back to clicking the element).
   - Content is now whitespace-removed from the entire HTML before slicing.
   - Returns sliced content, total characters (after whitespace removal), `startIndex`, `maxLength`, `remainingCharacters`, and an `instruction` for fetching more content (includes a suggestion to stop if enough information is gathered).
+  - `evaluateScript`: A JavaScript code string to execute on the page after it loads. The result of this script will be returned in the tool's output as `evaluatedScriptResult`.
   - Required parameters: `startIndex` (or alias `index`) and at least one of `chunkSize` (preferred), `limit` (alias), or `maxLength` must be provided and be a number. Calls missing these required parameters will be rejected with an InvalidParams error. Set these values according to your needs; they may not be empty.
   - Validation behavior: runtime validation is enforced in `src/index.ts` and the MCP tool will throw/reject when required parameters are missing or invalid. If you prefer automatic fallbacks instead of rejection, modify the validation logic in `src/index.ts`.
 - 🛡️ Debug & Logging
@@ -391,7 +392,8 @@ Set the following environment variables for Google Custom Search:
     "maxLength": 5000,
     "nextPageSelector": ".pagination-next a",
     "maxPages": 3,
-    "debug": true
+    "debug": true,
+    "evaluateScript": "document.body.textContent.substring(0, 100)"
   }
 }
 ```
@@ -408,8 +410,34 @@ Set the following environment variables for Google Custom Search:
     "method": "GET",
     "headers": {
       "Accept": "application/vnd.github.v3+json"
-    }
+    },
+    "limit": 10000
   }
+}
+```
+</details>
+
+<details>
+<summary>Example `fetch_api` Response (with `responseTimeMs`)</summary>
+
+```json
+{
+  "status": 200,
+  "statusText": "OK",
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+    // ... other headers
+  },
+  "body": {
+    "id": 12345,
+    "name": "nodejs/node",
+    // ... other body content
+  },
+  "ok": true,
+  "url": "https://api.github.com/repos/nodejs/node",
+  "bodyLength": 1234,
+  "truncated": false,
+  "responseTimeMs": 150.75 // Example response time in milliseconds
 }
 ```
 </details>

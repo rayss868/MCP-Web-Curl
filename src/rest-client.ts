@@ -7,6 +7,7 @@ export interface FetchApiArgs {
   body?: any; // Can be string, Buffer, stream, or URLSearchParams
   timeout?: number; // Timeout in milliseconds
   limit: number; // Maximum number of characters to return in the response body (required)
+  redirect?: 'follow' | 'error' | 'manual'; // Redirect mode
 }
 
 // Validate the arguments for fetch_api tool
@@ -19,6 +20,7 @@ export const isValidFetchApiArgs = (args: any): args is FetchApiArgs => {
   // but for now, we'll assume it's provided correctly if it exists.
   if (args.timeout !== undefined && typeof args.timeout !== 'number') return false;
   if (args.limit === undefined || typeof args.limit !== 'number') return false; // limit is required and must be a number
+  if (args.redirect !== undefined && !['follow', 'error', 'manual'].includes(args.redirect)) return false;
   return true;
 };
 
@@ -31,20 +33,24 @@ export interface FetchApiResponse {
   url: string;
   bodyLength?: number; // length of the un-truncated body (characters)
   truncated?: boolean; // whether the body was truncated to satisfy limit
+  responseTimeMs: number; // Add response time in milliseconds
 }
 
 // Function to make the API request
 export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> => {
-  const { url, method, headers, body, timeout = 60000, limit } = args;
+  const { url, method, headers, body, timeout = 60000, limit, redirect = 'follow' } = args;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  const startTime = performance.now(); // Start time measurement
 
   try {
     const options: RequestInit = {
       method,
       headers,
       signal: controller.signal,
+      redirect, // Add redirect option
       // The `timeout` option is specific to `node-fetch` and not part of the standard `RequestInit`.
       // The timeout logic is now handled manually using AbortController.
     };
@@ -59,6 +65,9 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
 
     const response: Response = await fetch(url, options);
     clearTimeout(timeoutId);
+
+    const endTime = performance.now(); // End time measurement
+    const responseTimeMs = endTime - startTime; // Calculate response time
 
     let responseBody: any;
     const contentType = response.headers.get('content-type');
@@ -117,6 +126,7 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
       url: response.url,
       bodyLength,
       truncated,
+      responseTimeMs, // Include response time
     };
   } catch (error: any) {
     clearTimeout(timeoutId);

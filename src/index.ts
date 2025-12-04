@@ -18,6 +18,7 @@ let translate: any;
   translate = (await import('translate')).default || (await import('translate'));
 })();
 import { Readability } from '@mozilla/readability';
+import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
 
  // Define the interface for the fetch_webpage tool arguments
  interface FetchWebpageArgs {
@@ -32,6 +33,7 @@ import { Readability } from '@mozilla/readability';
   headers?: Record<string, string>;
   username?: string;
   password?: string;
+  evaluateScript?: string; // Add evaluateScript parameter
  }
 
 // Define the interface for the download_file tool arguments
@@ -154,6 +156,10 @@ class WebCurlServer {
                 type: 'number',
                 description: 'Maximum number of pages to crawl (for auto-pagination, optional, default: 1)'
               },
+              evaluateScript: { // Add evaluateScript to the input schema
+                type: 'string',
+                description: 'JavaScript code to execute on the page after loading. The result of the script will be returned.'
+              }
             },
             required: ['url', 'startIndex'],
             additionalProperties: false,
@@ -191,6 +197,11 @@ class WebCurlServer {
               limit: {
                 type: 'number',
                 description: 'Maximum number of characters to return in the response body (required).'
+              },
+              redirect: {
+                type: 'string',
+                enum: ['follow', 'error', 'manual'],
+                description: 'Redirect mode for the request (default: follow).'
               },
             },
             required: ['url', 'method', 'limit'],
@@ -307,7 +318,8 @@ class WebCurlServer {
             username,
             password,
             nextPageSelector,
-            maxPages = 1
+            maxPages = 1,
+            evaluateScript // Destructure evaluateScript
         } = validatedArgs;
 
         const timeout = Math.min(rawTimeout || 60000, 300000);
@@ -325,6 +337,7 @@ class WebCurlServer {
                 password: currentArgs.password,
                 nextPageSelector: currentArgs.nextPageSelector,
                 maxPages: currentArgs.maxPages ?? 1, // Provide default
+                evaluateScript: currentArgs.evaluateScript // Pass evaluateScript
             });
 
             const totalCharacters = result.contentLength; // total characters of the whitespace-removed HTML
@@ -346,6 +359,7 @@ class WebCurlServer {
                 maxLength: currentArgs.maxLength,
                 remainingCharacters: remainingCharacters,
                 instruction: instruction,
+                evaluatedScriptResult: result.evaluatedScriptResult, // Include the script result
             };
 
             return {
@@ -375,126 +389,24 @@ class WebCurlServer {
             };
         }
       } else if (toolName === 'fetch_api') {
-        // Define an interface for fetch_api arguments directly here
-        interface DirectFetchApiArgs {
-          url: string;
-          method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
-          headers?: Record<string, string>;
-          body?: any;
-          timeout?: number;
-          limit: number;
-        }
-
-        const isValidDirectFetchApiArgs = (a: any): a is DirectFetchApiArgs => {
-          return (
-            typeof a === 'object' &&
-            a !== null &&
-            typeof a.url === 'string' &&
-            ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'].includes(a.method) &&
-            (a.headers === undefined || (typeof a.headers === 'object' && a.headers !== null && !Array.isArray(a.headers))) &&
-            (a.timeout === undefined || typeof a.timeout === 'number') &&
-            (typeof a.limit === 'number')
-          );
-        };
-
-        if (!isValidDirectFetchApiArgs(args)) {
+        if (!isValidFetchApiArgs(args)) {
           throw new McpError(
             ErrorCode.InvalidParams,
             'Invalid fetch_api arguments'
           );
         }
 
-        const { url, method, headers, body, timeout = 60000, limit } = args as DirectFetchApiArgs;
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
         try {
-          let options: RequestInit = {
-            method,
-            headers,
-            signal: controller.signal,
-          };
-
-          if (body !== undefined && body !== null) {
-            options = {
-              ...options,
-              body: (typeof body === 'object' && headers && headers['Content-Type'] === 'application/json') ? JSON.stringify(body) : body
-            };
-          }
-
-          const response = await fetch(url, options as any);
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          let responseBody: any;
-          const contentType = response.headers.get('content-type');
-
-          if (contentType && contentType.includes('application/json')) {
-            responseBody = await response.json();
-          } else if (contentType && (contentType.includes('text/') || contentType.includes('application/xml') || contentType.includes('application/xhtml+xml'))) {
-            responseBody = await response.text();
-          } else {
-            try {
-              const buffer = await response.arrayBuffer();
-              responseBody = Buffer.from(buffer).toString('base64');
-            } catch (e) {
-              responseBody = 'Could not parse body (binary or unknown content type)';
-            }
-          }
-
-          const responseHeaders: Record<string, string> = {};
-          response.headers.forEach((value, name) => {
-            responseHeaders[name] = value;
-          });
-
-          let fullBodyString: string;
-          try {
-            if (typeof responseBody === 'string') {
-              fullBodyString = responseBody;
-            } else {
-              fullBodyString = JSON.stringify(responseBody);
-            }
-          } catch (e) {
-            fullBodyString = String(responseBody);
-          }
-
-          const bodyLength = fullBodyString.length;
-          let truncated = false;
-          let finalBody: any = responseBody;
-
-          if (typeof limit === 'number' && bodyLength > limit) {
-            finalBody = fullBodyString.substring(0, limit);
-            truncated = true;
-          } else {
-            finalBody = responseBody;
-          }
-
+          const apiResponse = await fetchApi(args as FetchApiArgs);
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify({
-                  status: response.status,
-                  statusText: response.statusText,
-                  headers: responseHeaders,
-                  body: finalBody,
-                  ok: response.ok,
-                  url: response.url,
-                  bodyLength,
-                  truncated,
-                }, null, 2),
+                text: JSON.stringify(apiResponse, null, 2),
               },
             ],
           };
         } catch (error: any) {
-          clearTimeout(timeoutId);
-          if (error.name === 'AbortError') {
-            throw new Error(`Request timed out after ${timeout / 1000} seconds`);
-          }
           console.error('Error calling fetch_api:', error);
           return {
             content: [
@@ -715,6 +627,7 @@ class WebCurlServer {
       password?: string;
       nextPageSelector?: string;
       maxPages: number;
+      evaluateScript?: string; // Add evaluateScript to options
   }) {
       const browser = await puppeteer.launch({
           headless: true,
@@ -770,12 +683,22 @@ class WebCurlServer {
               // Step 3: Slice the cleaned HTML based on startIndex and maxLength
               const slicedContent = cleanedHtml.substring(options.startIndex, options.startIndex + options.maxLength);
 
+              let scriptResult: any = null; // Declare scriptResult here with explicit 'any' type
+              if (options.evaluateScript) {
+                  try {
+                      scriptResult = await page.evaluate(options.evaluateScript);
+                  } catch (scriptError: any) {
+                      scriptResult = `Error executing script: ${scriptError.message}`;
+                  }
+              }
+
               results.push({
                   url: currentUrl,
                   title,
                   content: slicedContent, // Renamed from slicedContent for consistency with tool handler
                   contentLength: totalLength, // Renamed from totalCharacters for consistency with tool handler
                   fetchedAt: new Date().toISOString(),
+                  evaluatedScriptResult: scriptResult, // Include the script result
               });
               console.log(`DEBUG: totalLength (after whitespace removal): ${totalLength}, startIndex: ${options.startIndex}, slicedContent length: ${slicedContent.length}`);
               
