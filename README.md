@@ -88,6 +88,26 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 ## ✨ Features
 
+### 🚀 Deep Research & Automation (v1.4.0)
+
+- **Advanced Browser Automation**: Full control over Chromium via Puppeteer (click, type, scroll, hover, key presses).
+- **Multi-Tab Research**: Manage up to 10 concurrent tabs with automatic rotation. Open multiple pages or perform parallel searches to gather information faster.
+- **Anti-HTML Spam Snapshots**: Get clean, structured accessibility tree snapshots instead of messy HTML. Perfect for AI context windows.
+- **Chrome DevTools Integration**:
+    - **Network Monitoring**: Capture XHR/Fetch requests to see data flowing behind the scenes.
+    - **Console Logs**: Access browser console output for debugging or data extraction.
+    - **Cookie Management**: Get, set, or clear cookies for session-based research.
+    - **Browser Configuration**: Set custom User-Agents, Proxies, and Viewport sizes.
+- **Parallel Batch Operations**:
+    - `multi_search`: Run multiple Google searches at once.
+    - `batch_navigate`: Open and load multiple websites in parallel.
+- **Intelligent Resource Management**:
+    - **Idle Auto-Close**: Browser automatically shuts down after 1 minute of inactivity to save RAM/CPU.
+    - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
+- **Media & Documents**:
+    - **Full-Page Screenshots**: Capture high-quality screenshots with a 5-day auto-cleanup lifecycle.
+    - **Document Parsing**: Extract text from PDF and DOCX files directly from URLs.
+
 ### Storage & Download Details
 
 - 🗂️ Error log rotation: `logs/error-log.txt` is rotated when it exceeds ~1MB (renamed to `error-log.txt.bak`) to prevent unbounded growth.
@@ -183,11 +203,26 @@ To integrate web-curl as an MCP server, add the following configuration to your 
       ],
       "disabled": false,
       "alwaysAllow": [
-        "fetch_webpage",
-        "fetch_api",
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_action",
+        "browser_tabs",
+        "batch_navigate",
+        "multi_search",
+        "browser_network_requests",
+        "browser_console_messages",
+        "browser_cookies",
+        "browser_configure",
+        "browser_links",
+        "browser_wait_for",
+        "take_screenshot",
+        "parse_document",
+        "browser_close",
         "google_search",
+        "fetch_api",
         "smart_command",
-        "download_file"
+        "download_file",
+        "fetch_webpage"
       ],
       "env": {
         "APIKEY_GOOGLE_SEARCH": "YOUR_GOOGLE_API_KEY",
@@ -280,13 +315,28 @@ node build/index.js -o result.json https://example.com
 
 Web-curl can be run as an MCP server for integration with Roo Context or other MCP-compatible environments.
 
-#### Exposed Tools
+#### Exposed Tools (v1.4.0)
 
-- **fetch_webpage**: Retrieve text, html, main article content, and metadata from a web page. Supports multi-page crawling (pagination) and debug mode.
-- **fetch_api**: Make REST API requests with custom methods, headers, body, timeout, and debug mode.
-- **google_search**: Search the web using Google Custom Search API, with advanced filters (language, region, site, dateRestrict) and debug mode.
-- **smart_command**: Free-form command with automatic language detection, translation, query enrichment, and debug mode.
-- **download_file**: Download a file from a given URL to a specified folder.
+- **browser_navigate**: Navigate the current tab to a URL.
+- **browser_snapshot**: Capture a tree-like accessibility snapshot (no HTML spam).
+- **browser_action**: Interact with the page (click, type, scroll, hover, press_key).
+- **browser_tabs**: List, create, close, or select browser tabs (max 10).
+- **batch_navigate**: Navigate to multiple URLs in parallel.
+- **multi_search**: Perform multiple Google searches in parallel.
+- **browser_network_requests**: Get recent network requests (XHR/Fetch).
+- **browser_console_messages**: Get recent browser console messages.
+- **browser_cookies**: Manage browser cookies.
+- **browser_configure**: Configure Proxy, User-Agent, or Viewport.
+- **browser_links**: Get all valid links from the current page.
+- **browser_wait_for**: Wait for text to appear or disappear.
+- **take_screenshot**: Capture a full-page screenshot (saved for 5 days).
+- **parse_document**: Extract text from PDF/DOCX URLs.
+- **browser_close**: Manually close the browser and all tabs.
+- **google_search**: Search the web using Google Custom Search API.
+- **fetch_api**: Make REST API requests.
+- **smart_command**: Free-form command with auto language detection.
+- **download_file**: Download a file from a URL.
+- **fetch_webpage**: (Legacy) Retrieve text/HTML from a page.
 
 #### Running as MCP Server
 

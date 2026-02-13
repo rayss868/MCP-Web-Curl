@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.4.0] - 2026-02-13
+
+### Added
+- **Deep Research Suite**: Transformed the server into a high-performance research tool with advanced browser automation.
+- **Multi-Tab Management**: Added a `browser_tabs` system supporting up to 10 concurrent tabs with automatic LRU (Least Recently Used) rotation.
+- **Parallel Operations**:
+    - `multi_search`: Perform multiple Google searches in parallel.
+    - `batch_navigate`: Navigate to multiple URLs simultaneously in separate tabs.
+- **Anti-HTML Spam Snapshot**: `browser_snapshot` now returns a compact, tree-like accessibility snapshot with `ref` IDs for efficient AI interaction instead of raw HTML.
+- **Advanced Browser Automation**:
+    - `browser_action`: Support for `click`, `type`, `scroll`, `press_key`, `hover`, and `waitForSelector`.
+    - `browser_wait_for`: Wait for specific text to appear or disappear.
+    - `browser_links`: Extract all valid links from the current page.
+- **Chrome DevTools Integration**:
+    - `browser_network_requests`: Capture and inspect network traffic (XHR/Fetch).
+    - `browser_console_messages`: Access browser console logs for debugging.
+    - `browser_cookies`: Manage browser cookies (get, set, delete, clear).
+    - `browser_configure`: Configure Proxy, User-Agent, and Viewport settings.
+- **Resource Management**:
+    - **Idle Timeout**: Browser process automatically closes after 1 minute of inactivity to save resources.
+    - `browser_close`: Manual tool to terminate the browser instance.
+- **Enhanced Media & Document Support**:
+    - `take_screenshot`: Full-page screenshots with a 5-day automatic cleanup lifecycle.
+    - `parse_document`: Extract text content from PDF and DOCX URLs.
+- **Restored Legacy Tools**: Re-integrated `google_search`, `download_file`, and `smart_command` into the new architecture.
+
+### Changed
+- Refactored core architecture to use a persistent browser instance with tab-aware state management.
+- Improved error handling and logging for Puppeteer operations.
+
 ## [1.0.6] - 2025-10-27
 
 ### Added
