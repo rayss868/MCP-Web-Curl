@@ -135,9 +135,22 @@ class WebCurlServer {
   private async getBrowser() {
     if (!this.browser) {
       await this.killExistingBrowser();
-      const args = ['--incognito', '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+      const args = [
+        '--incognito',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--no-zygote',
+        '--hide-scrollbars'
+      ];
       if (this.proxy) args.push(`--proxy-server=${this.proxy}`);
-      this.browser = await puppeteer.launch({ headless: true, args });
+      this.browser = await puppeteer.launch({
+        headless: true,
+        args,
+        defaultViewport: { width: 1280, height: 800 }
+      });
       
       const pid = this.browser.process()?.pid;
       if (pid) {
@@ -597,7 +610,7 @@ class WebCurlServer {
           const { url } = args as any;
           this.networkRequests.set(page, []);
           this.consoleMessages.set(page, []);
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
           return { content: [{ type: 'text', text: `Navigated to ${url}` }] };
         } else if (toolName === 'batch_navigate') {
           const { urls } = args as any;
@@ -605,7 +618,7 @@ class WebCurlServer {
           for (const url of urls) {
             try {
               const p = await this.createNewPage();
-              await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await p.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
               results.push({ url, status: 'success', tabIndex: this.pages.length - 1 });
             } catch (e: any) {
               results.push({ url, status: 'error', error: e.message });
@@ -781,6 +794,8 @@ class WebCurlServer {
     const page = await this.getPage();
     if (!fs.existsSync(this.SCREENSHOT_DIR)) fs.mkdirSync(this.SCREENSHOT_DIR, { recursive: true });
     const filePath = path.join(this.SCREENSHOT_DIR, args.filename || `screenshot-${Date.now()}.png`);
+    // Small delay to ensure rendering is stable on server environments
+    await new Promise(resolve => setTimeout(resolve, 1000));
     await page.screenshot({ path: filePath as any, fullPage: args.fullPage !== false });
     return filePath;
   }
