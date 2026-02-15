@@ -49,6 +49,7 @@ interface BrowserActionArgs {
 interface ScreenshotArgs {
   filename?: string;
   fullPage?: boolean;
+  destinationFolder?: string;
 }
 
 class WebCurlServer {
@@ -61,6 +62,7 @@ class WebCurlServer {
   private readonly MAX_TABS = 10;
   private networkRequests: Map<Page, any[]> = new Map();
   private consoleMessages: Map<Page, any[]> = new Map();
+  private customScreenshotDirs: Set<string> = new Set();
   private proxy: string | null = null;
   private userAgent: string | null = null;
   private browserURL: string | null = null;
@@ -104,20 +106,26 @@ class WebCurlServer {
 
   private cleanupOldFiles() {
     try {
-      if (!fs.existsSync(this.SCREENSHOT_DIR)) {
-        fs.mkdirSync(this.SCREENSHOT_DIR, { recursive: true });
-        return;
-      }
-      const files = fs.readdirSync(this.SCREENSHOT_DIR);
       const now = Date.now();
       const expiryMs = 5 * 24 * 60 * 60 * 1000; // 5 days
-      files.forEach(file => {
-        const filePath = path.join(this.SCREENSHOT_DIR, file);
-        const stats = fs.statSync(filePath);
-        if (now - stats.mtimeMs > expiryMs) {
-          fs.unlinkSync(filePath);
-        }
-      });
+
+      const cleanupDir = (dir: string) => {
+        if (!fs.existsSync(dir)) return;
+        const files = fs.readdirSync(dir);
+        files.forEach(file => {
+          const filePath = path.join(dir, file);
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > expiryMs) {
+            fs.unlinkSync(filePath);
+          }
+        });
+      };
+
+      // Cleanup default directory
+      cleanupDir(this.SCREENSHOT_DIR);
+
+      // Cleanup custom directories used in this session
+      this.customScreenshotDirs.forEach(dir => cleanupDir(dir));
     } catch (error) {
       console.error('Error during cleanup:', error);
     }
@@ -519,7 +527,8 @@ class WebCurlServer {
             type: 'object',
             properties: {
               filename: { type: 'string', description: 'Optional custom filename for the screenshot.' },
-              fullPage: { type: 'boolean', description: 'Whether to capture the entire scrollable page (true) or just the visible viewport (false). Defaults to true.' }
+              fullPage: { type: 'boolean', description: 'Whether to capture the entire scrollable page (true) or just the visible viewport (false). Defaults to true.' },
+              destinationFolder: { type: 'string', description: 'Optional custom directory path to save the screenshot. If not provided, defaults to the internal screenshots folder. Supports absolute or relative paths.' }
             }
           }
         },
@@ -1034,8 +1043,48 @@ class WebCurlServer {
 
   private async takeScreenshot(args: ScreenshotArgs): Promise<string> {
     const page = await this.getPage();
-    if (!fs.existsSync(this.SCREENSHOT_DIR)) fs.mkdirSync(this.SCREENSHOT_DIR, { recursive: true });
-    const filePath = path.join(this.SCREENSHOT_DIR, args.filename || `screenshot-${Date.now()}.png`);
+    
+    let destDir = this.SCREENSHOT_DIR;
+    if (args.destinationFolder) {
+      try {
+        // Resolve path: if relative, resolve against PROJECT_ROOT
+        destDir = path.isAbsolute(args.destinationFolder)
+          ? args.destinationFolder
+          : path.resolve(PROJECT_ROOT, args.destinationFolder);
+        
+        // Basic syntax validation: check if path is valid for the OS
+        // On Windows, we check for invalid characters
+        if (process.platform === 'win32') {
+          const invalidChars = /[<>:"|?*]/;
+          const driveLetter = /^[a-zA-Z]:\\/;
+          // If it's absolute, it should start with drive letter or UNC
+          if (path.isAbsolute(destDir) && !driveLetter.test(destDir) && !destDir.startsWith('\\\\')) {
+             throw new Error('Invalid Windows path format');
+          }
+          if (invalidChars.test(destDir.replace(driveLetter, ''))) {
+            throw new Error('Path contains invalid characters');
+          }
+        }
+      } catch (e: any) {
+        throw new Error(`Invalid directory syntax: ${e.message}`);
+      }
+    }
+
+    // Auto-create directory if it doesn't exist
+    if (!fs.existsSync(destDir)) {
+      try {
+        fs.mkdirSync(destDir, { recursive: true });
+      } catch (e: any) {
+        throw new Error(`Failed to create directory: ${e.message}`);
+      }
+    }
+
+    // Track custom directory for cleanup
+    if (destDir !== this.SCREENSHOT_DIR) {
+      this.customScreenshotDirs.add(destDir);
+    }
+
+    const filePath = path.join(destDir, args.filename || `screenshot-${Date.now()}.png`);
     
     // Critical stabilization delay for Ubuntu Server rendering
     await new Promise(resolve => setTimeout(resolve, 2000));

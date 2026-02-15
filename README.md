@@ -91,8 +91,11 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 ### 🚀 Deep Research & Automation (v1.4.0)
 
 - **Advanced Browser Automation**: Full control over Chromium via Puppeteer (click, type, scroll, hover, key presses).
+- **Live Browser Connection**: Use `browser_connect` to attach to your existing Chrome/Edge instance. This allows the AI to use your **active login sessions** and bypass CAPTCHAs manually.
 - **Multi-Tab Research**: Manage up to 10 concurrent tabs with automatic rotation. Open multiple pages or perform parallel searches to gather information faster.
-- **Anti-HTML Spam Snapshots**: Get clean, structured accessibility tree snapshots instead of messy HTML. Perfect for AI context windows.
+- **Token-Efficient Snapshots**:
+    - **Accessibility Tree**: Clean, structured snapshots instead of messy HTML.
+    - **Viewport Filtering**: Automatically filters out elements not visible on screen, saving up to 90% of context tokens on long pages.
 - **Chrome DevTools Integration**:
     - **Network Monitoring**: Capture XHR/Fetch requests to see data flowing behind the scenes.
     - **Console Logs**: Access browser console output for debugging or data extraction.
@@ -235,6 +238,17 @@ To integrate web-curl as an MCP server, add the following configuration to your 
 
 ---
 
+### 🧩 Web-curl Bridge Extension
+
+To make it easier to connect your browser, I've created a **Web-curl Bridge Extension**.
+
+1.  Open Chrome/Edge and go to `chrome://extensions/`.
+2.  Enable **Developer mode** (toggle in the top right).
+3.  Click **Load unpacked** and select the `extension/` folder in this project.
+4.  Click the extension icon to copy the debug command and see the connection status.
+
+---
+
 ### 🔑 How to Obtain Google API Key and CX
 
 1.  **Get a Google API Key:**
@@ -350,8 +364,10 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 #### Exposed Tools (v1.4.0)
 
 - **browser_navigate**: Navigate the current tab to a URL.
-- **browser_snapshot**: Capture a tree-like accessibility snapshot (no HTML spam).
+- **browser_snapshot**: Capture a tree-like accessibility snapshot (Viewport-filtered, token-efficient).
+- **browser_connect**: Connect to an existing browser instance (use active logins/sessions).
 - **browser_action**: Interact with the page (click, type, scroll, hover, press_key).
+- **Browser Extension**: A helper extension is available in the `extension/` folder to simplify connecting your browser to the AI.
 - **browser_tabs**: List, create, close, or select browser tabs (max 10).
 - **batch_navigate**: Navigate to multiple URLs in parallel.
 - **multi_search**: Perform multiple Google searches in parallel.
