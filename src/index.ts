@@ -9,8 +9,10 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import puppeteer, { Browser, Page, ConsoleMessage, HTTPRequest } from 'puppeteer';
+import { WebSocketServer, WebSocket } from 'ws';
 import { franc } from 'franc-min';
 import { Readable } from 'stream';
 import { pipeline } from 'node:stream/promises';
@@ -20,6 +22,11 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
 import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Project root is one level up from 'src' or 'build'
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 let translate: any;
 (async () => {
@@ -49,16 +56,22 @@ class WebCurlServer {
   private browser: Browser | null = null;
   private pages: Page[] = [];
   private activePageIndex: number = 0;
-  private readonly SCREENSHOT_DIR = path.join(process.cwd(), 'screenshots');
-  private readonly PID_FILE = path.join(process.cwd(), 'logs', 'browser.pid');
+  private readonly SCREENSHOT_DIR = path.join(PROJECT_ROOT, 'screenshots');
+  private readonly PID_FILE = path.join(PROJECT_ROOT, 'logs', 'browser.pid');
   private readonly MAX_TABS = 10;
   private networkRequests: Map<Page, any[]> = new Map();
   private consoleMessages: Map<Page, any[]> = new Map();
   private proxy: string | null = null;
   private userAgent: string | null = null;
+  private browserURL: string | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
 
+  private wss: WebSocketServer | null = null;
+  private extensionSocket: WebSocket | null = null;
+  private pendingRequests: Map<string, { resolve: Function, reject: Function }> = new Map();
+
   constructor() {
+    this.setupWebSocketServer();
     this.server = new Server(
       {
         name: 'web-curl',
@@ -80,6 +93,7 @@ class WebCurlServer {
 
     const cleanup = async () => {
       if (this.browser) await this.browser.close();
+      if (this.wss) this.wss.close();
       await this.server.close();
       process.exit(0);
     };
@@ -109,6 +123,60 @@ class WebCurlServer {
     }
   }
 
+  private setupWebSocketServer() {
+    try {
+      // Create server without port first to attach error listener
+      this.wss = new WebSocketServer({ noServer: true });
+      
+      const server = require('http').createServer();
+      server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error('[WebSocket] Port 9223 already in use. Bridge might be active in another session.');
+        } else {
+          console.error('[WebSocket] Server error:', err.message);
+        }
+      });
+
+      server.listen(9223, () => {
+        console.error('[WebSocket] Server listening on port 9223');
+      });
+
+      server.on('upgrade', (request: any, socket: any, head: any) => {
+        this.wss?.handleUpgrade(request, socket, head, (ws) => {
+          this.wss?.emit('connection', ws, request);
+        });
+      });
+
+      this.wss.on('connection', (ws) => {
+        console.error('[WebSocket] Extension connected');
+        this.extensionSocket = ws;
+        
+        ws.on('message', (data) => {
+          try {
+            const message = JSON.parse(data.toString());
+            if (message.type === 'RESPONSE' || message.type === 'ERROR') {
+              const pending = this.pendingRequests.get(message.id);
+              if (pending) {
+                if (message.type === 'ERROR') pending.reject(new Error(message.error));
+                else pending.resolve(message.payload);
+                this.pendingRequests.delete(message.id);
+              }
+            }
+          } catch (e) {
+            console.error('[WebSocket] Error parsing message:', e);
+          }
+        });
+
+        ws.on('close', () => {
+          console.error('[WebSocket] Extension disconnected');
+          this.extensionSocket = null;
+        });
+      });
+    } catch (e: any) {
+      console.error('[WebSocket] Failed to start server:', e.message);
+    }
+  }
+
   private async killExistingBrowser() {
     try {
       if (fs.existsSync(this.PID_FILE)) {
@@ -134,6 +202,44 @@ class WebCurlServer {
 
   private async getBrowser() {
     if (!this.browser) {
+      // Priority 1: Use browserURL if explicitly provided
+      if (this.browserURL) {
+        try {
+          this.browser = await puppeteer.connect({
+            browserURL: this.browserURL,
+            defaultViewport: { width: 1280, height: 800 }
+          });
+          console.error(`[Browser] Connected to existing instance at ${this.browserURL}`);
+          
+          // Sync existing pages
+          this.pages = await this.browser.pages();
+          for (const page of this.pages) {
+            await this.setupPage(page);
+          }
+          if (this.pages.length > 0) this.activePageIndex = 0;
+          
+          return this.browser;
+        } catch (e: any) {
+          console.error(`[Browser] Failed to connect to ${this.browserURL}: ${e.message}. Falling back to launch.`);
+          this.browserURL = null;
+        }
+      }
+
+      // Priority 2: Try connecting to default debugging port (9222) automatically
+      try {
+        this.browser = await puppeteer.connect({
+          browserURL: 'http://127.0.0.1:9222',
+          defaultViewport: { width: 1280, height: 800 }
+        });
+        console.error('[Browser] Auto-connected to local Chrome at port 9222');
+        this.pages = await this.browser.pages();
+        for (const page of this.pages) await this.setupPage(page);
+        if (this.pages.length > 0) this.activePageIndex = 0;
+        return this.browser;
+      } catch (e) {
+        // Silent fail, proceed to launch
+      }
+
       await this.killExistingBrowser();
       const args = [
         '--incognito',
@@ -143,7 +249,18 @@ class WebCurlServer {
         '--disable-gpu',
         '--disable-software-rasterizer',
         '--no-zygote',
-        '--hide-scrollbars'
+        '--hide-scrollbars',
+        '--disable-extensions',
+        '--disable-component-update',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--font-render-hinting=none',
+        '--disable-web-security',
+        '--allow-running-insecure-content',
+        '--disable-infobars',
+        '--window-position=0,0',
+        '--ignore-certifcate-errors',
+        '--ignore-certifcate-errors-spki-list',
+        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
       ];
       if (this.proxy) args.push(`--proxy-server=${this.proxy}`);
       this.browser = await puppeteer.launch({
@@ -208,7 +325,11 @@ class WebCurlServer {
   }
 
   private async setupPage(page: Page) {
-    if (this.userAgent) await page.setUserAgent(this.userAgent);
+    page.setDefaultNavigationTimeout(90000);
+    page.setDefaultTimeout(60000);
+
+    const defaultUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    await page.setUserAgent(this.userAgent || defaultUA);
     
     this.consoleMessages.set(page, []);
     this.networkRequests.set(page, []);
@@ -266,6 +387,19 @@ class WebCurlServer {
         const style = window.getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return null;
 
+        // Viewport filtering: Check if element is within the current viewport
+        const rect = el.getBoundingClientRect();
+        const isInViewport = (
+          rect.top >= 0 &&
+          rect.left >= 0 &&
+          rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+          rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+        );
+
+        // Only process if it's the body, or if it's visible in viewport
+        // We still want to traverse children of non-visible elements because a small child might be visible
+        // But for performance and token efficiency, we can mark them.
+        
         const ref = 'e' + (count++);
         el.setAttribute('data-mcp-ref', ref);
 
@@ -273,6 +407,7 @@ class WebCurlServer {
           role: getRole(el),
           ref: ref,
           name: el.innerText?.split('\n')[0].substring(0, 60).trim() || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('alt') || '',
+          visible: isInViewport
         };
 
         if (el instanceof HTMLAnchorElement) node.url = el.getAttribute('href');
@@ -293,6 +428,13 @@ class WebCurlServer {
     });
 
     const formatNode = (node: any, indent: string = ''): string => {
+      // Skip non-visible elements to save tokens, unless they have visible children
+      const visibleChildren = node.children?.filter((c: any) => c.visible || (c.children && c.children.length > 0));
+      
+      if (!node.visible && (!visibleChildren || visibleChildren.length === 0)) {
+        return '';
+      }
+
       let line = `${indent}- ${node.role}`;
       if (node.name) line += ` "${node.name}"`;
       if (node.level) line += ` [level=${node.level}]`;
@@ -302,8 +444,12 @@ class WebCurlServer {
       let extra = '';
       if (node.url) extra += `\n${indent}  - /url: ${node.url}`;
 
-      if (node.children) {
-        return `${line}:${extra}\n` + node.children.map((c: any) => formatNode(c, indent + '  ')).join('\n');
+      if (visibleChildren && visibleChildren.length > 0) {
+        const childrenStr = visibleChildren
+          .map((c: any) => formatNode(c, indent + '  '))
+          .filter((s: string) => s !== '')
+          .join('\n');
+        return childrenStr ? `${line}:${extra}\n${childrenStr}` : line + extra;
       }
       return line + extra;
     };
@@ -553,6 +699,20 @@ class WebCurlServer {
           name: 'browser_close',
           description: 'Immediately terminates the browser process and closes all open tabs. Note: The browser also closes automatically after 1 minute of inactivity.',
           inputSchema: { type: 'object', properties: {} }
+        },
+        {
+          name: 'browser_connect',
+          description: 'Connects to an existing Chrome/Edge instance running with remote debugging enabled (e.g., --remote-debugging-port=9222). This allows the AI to use your existing login sessions and bypass CAPTCHAs manually.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              browserURL: {
+                type: 'string',
+                description: 'The URL of the remote debugging port (default: http://127.0.0.1:9222)',
+                default: 'http://127.0.0.1:9222'
+              }
+            }
+          }
         }
       ]
     }));
@@ -560,6 +720,57 @@ class WebCurlServer {
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name;
       const args = request.params.arguments;
+
+      // Extension Priority: If extension is connected, route commands through it
+      // DISABLED BY USER REQUEST
+      /*
+      const extensionTools = [
+        'browser_navigate',
+        'browser_snapshot',
+        'browser_action',
+        'browser_links',
+        'take_screenshot',
+        'browser_tabs',
+        'browser_console_messages',
+        'browser_network_requests',
+        'browser_cookies',
+        'browser_configure',
+        'browser_close'
+      ];
+
+      if (this.extensionSocket && extensionTools.includes(toolName)) {
+        const id = Math.random().toString(36).substring(7);
+        let type = '';
+        if (toolName === 'browser_navigate') type = 'NAVIGATE';
+        else if (toolName === 'browser_snapshot') type = 'SNAPSHOT';
+        else if (toolName === 'browser_action') type = 'ACTION';
+        else if (toolName === 'browser_links') type = 'LINKS';
+        else if (toolName === 'take_screenshot') type = 'SCREENSHOT';
+        else if (toolName === 'browser_tabs') type = 'TABS';
+        else if (toolName === 'browser_console_messages') type = 'CONSOLE';
+        else if (toolName === 'browser_network_requests') type = 'NETWORK';
+        else if (toolName === 'browser_cookies') type = 'COOKIES';
+        else if (toolName === 'browser_configure') type = 'CONFIGURE';
+        else if (toolName === 'browser_close') type = 'CLOSE';
+
+        return new Promise((resolve, reject) => {
+          this.pendingRequests.set(id, {
+            resolve: (payload: any) => resolve({ content: [{ type: 'text', text: typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2) }] }),
+            reject
+          });
+          this.extensionSocket?.send(JSON.stringify({ id, type, url: (args as any)?.url, args }));
+          
+          // Timeout for extension response
+          setTimeout(() => {
+            if (this.pendingRequests.has(id)) {
+              this.pendingRequests.delete(id);
+              reject(new McpError(ErrorCode.InternalError, 'Extension request timed out'));
+            }
+          }, 30000);
+        });
+      }
+      */
+
       try {
         this.resetIdleTimer();
         if (toolName === 'browser_close') {
@@ -572,6 +783,17 @@ class WebCurlServer {
             this.consoleMessages.clear();
           }
           return { content: [{ type: 'text', text: 'Browser closed' }] };
+        }
+
+        if (toolName === 'browser_connect') {
+          const { browserURL } = args as any;
+          this.browserURL = browserURL || 'http://127.0.0.1:9222';
+          if (this.browser) {
+            await this.browser.close();
+            this.browser = null;
+          }
+          await this.getBrowser();
+          return { content: [{ type: 'text', text: `Successfully connected to browser at ${this.browserURL}` }] };
         }
 
         if (toolName === 'browser_tabs') {
@@ -610,7 +832,20 @@ class WebCurlServer {
           const { url } = args as any;
           this.networkRequests.set(page, []);
           this.consoleMessages.set(page, []);
-          await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+          
+          // Align with working test script logic
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+          
+          try {
+            // Wait for network idle (more reliable for SPAs)
+            await page.waitForNetworkIdle({ idleTime: 1000, timeout: 30000 });
+          } catch (e) {
+            console.error('[Browser] Network idle timeout, proceeding anyway');
+          }
+
+          // Extra stabilization delay for hydrate
+          await new Promise(r => setTimeout(r, 1500));
+          
           return { content: [{ type: 'text', text: `Navigated to ${url}` }] };
         } else if (toolName === 'batch_navigate') {
           const { urls } = args as any;
@@ -618,7 +853,11 @@ class WebCurlServer {
           for (const url of urls) {
             try {
               const p = await this.createNewPage();
-              await p.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+              await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+              try {
+                await p.waitForNetworkIdle({ idleTime: 1000, timeout: 30000 });
+              } catch (e) {}
+              await new Promise(r => setTimeout(r, 1500));
               results.push({ url, status: 'success', tabIndex: this.pages.length - 1 });
             } catch (e: any) {
               results.push({ url, status: 'error', error: e.message });
@@ -747,7 +986,10 @@ class WebCurlServer {
           };
         } else if (toolName === 'download_file') {
           const { url, destinationFolder, filename } = args as any;
-          const destPath = path.resolve(process.cwd(), destinationFolder);
+          // Resolve relative paths against PROJECT_ROOT to keep data central
+          const destPath = path.isAbsolute(destinationFolder)
+            ? destinationFolder
+            : path.resolve(PROJECT_ROOT, destinationFolder);
           if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
           
           const response = await fetch(url);
@@ -794,9 +1036,16 @@ class WebCurlServer {
     const page = await this.getPage();
     if (!fs.existsSync(this.SCREENSHOT_DIR)) fs.mkdirSync(this.SCREENSHOT_DIR, { recursive: true });
     const filePath = path.join(this.SCREENSHOT_DIR, args.filename || `screenshot-${Date.now()}.png`);
-    // Small delay to ensure rendering is stable on server environments
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    await page.screenshot({ path: filePath as any, fullPage: args.fullPage !== false });
+    
+    // Critical stabilization delay for Ubuntu Server rendering
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    await page.screenshot({
+      path: filePath as any,
+      fullPage: args.fullPage !== false,
+      type: 'png',
+      omitBackground: false
+    });
     return filePath;
   }
 
