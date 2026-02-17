@@ -62,8 +62,8 @@ If your platform supports it, you can also [download and play demo/demo_1.mp4](d
 - [Architecture](#architecture)
 - [Installation](#installation)
 - [Usage](#usage)
-  - [CLI Usage](#cli-usage)
-  - [MCP Server Usage](#mcp-server-usage)
+- [CLI Usage](#cli-usage)
+- [MCP Server Usage](#mcp-server-usage)
 - [Configuration](#configuration)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
@@ -88,10 +88,10 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 ## ✨ Features
 
-### 🚀 Deep Research & Automation (v1.4.0)
+### 🚀 Deep Research & Automation (v1.4.1)
 
 - **Advanced Browser Automation**: Full control over Chromium via Puppeteer (click, type, scroll, hover, key presses).
-- **Live Browser Connection**: Use `browser_connect` to attach to your existing Chrome/Edge instance. This allows the AI to use your **active login sessions** and bypass CAPTCHAs manually.
+- **Session Persistence**: Optional persistent browser profiles. Enabling `persistSession` allows the AI to save login sessions, cookies, and cache in a local `user_data/` directory.
 - **Multi-Tab Research**: Manage up to 10 concurrent tabs with automatic rotation. Open multiple pages or perform parallel searches to gather information faster.
 - **Token-Efficient Snapshots**:
     - **Accessibility Tree**: Clean, structured snapshots instead of messy HTML.
@@ -108,7 +108,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
     - **Idle Auto-Close**: Browser automatically shuts down after 1 minute of inactivity to save RAM/CPU.
     - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
 - **Media & Documents**:
-    - **Full-Page Screenshots**: Capture high-quality screenshots with a 5-day auto-cleanup lifecycle.
+    - **Full-Page Screenshots**: Capture high-quality screenshots with a 5-day auto-cleanup lifecycle and custom destination support.
     - **Document Parsing**: Extract text from PDF and DOCX files directly from URLs.
 
 ### Storage & Download Details
@@ -123,42 +123,17 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 - ⏱️ Timeout control: navigation and API request timeouts are configurable via tool arguments.
 - 💾 Output: results can be printed to stdout or written to a file via CLI options.
 - ⬇️ Download behavior (`download_file`):
-  - `destinationFolder` accepts relative paths (resolved against `process.cwd()`) or absolute paths.
+  - `destinationFolder` accepts relative paths (resolved against the project root) or absolute paths.
   - The server creates `destinationFolder` if it does not exist.
   - Downloads are streamed using Node streams + `pipeline` to minimize memory use and ensure robust writes.
   - Filenames are derived from the URL path (e.g., `https://.../path/file.jpg` -> `file.jpg`). If no filename is present, the fallback name is `downloaded_file`.
-  - Overwrite semantics: by default the implementation will overwrite an existing file with the same name. To avoid overwrite, provide a unique `destinationFolder` or include a unique filename (timestamp, uuid) in the URL path or destination prior to calling the tool. (Optionally the code can be extended to support a `noOverwrite` flag to auto-rename files—ask if you want this implemented.)
-  - Error handling: non-2xx responses cause a thrown error; partial writes are avoided by streaming through `pipeline` and only returning the final path on success.
+  - Overwrite semantics: by default the implementation will overwrite an existing file with the same name.
 - 🖥️ Usage modes: CLI and MCP server (stdin/stdout transport).
 - 🌐 REST client: `fetch_api` returns JSON/text when appropriate and base64 for binary responses.
-- Note: `fetch_api` now requires a numeric `limit` parameter; responses will be truncated to at most `limit` characters. The response object includes `bodyLength` (original length in characters), `truncated` (boolean), `responseTimeMs` (number, indicating the duration of the API request in milliseconds), `timeout` (number, specifying the request timeout in milliseconds), and `redirect` (string, specifying the redirect mode: 'follow', 'error', or 'manual').
-- `fetch_api` is marked `autoApprove` in the MCP tool listing so compatible MCP hosts may invoke it without interactive approval. Internal calls in this codebase use a sensible default `limit` of 1000 characters where applicable.
 - 🔍 Google Custom Search: requires `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH`.
 - 🤖 Smart command:
-  - Auto language detection (franc-min) and optional translation (dynamic `translate` import). Translation is a best-effort fallback and may fail silently; original text is preserved on failure.
+  - Auto language detection (franc-min) and optional translation (dynamic `translate` import).
   - Query enrichment is heuristic-based; results depend on the detected intent.
-- 📄 fetch_webpage specifics:
-  - Multi-page crawling via `nextPageSelector` (tries href first, falls back to clicking the element).
-  - Content is now whitespace-removed from the entire HTML before slicing.
-  - Returns sliced content, total characters (after whitespace removal), `startIndex`, `maxLength`, `remainingCharacters`, and an `instruction` for fetching more content (includes a suggestion to stop if enough information is gathered).
-  - `evaluateScript`: A JavaScript code string to execute on the page after it loads. The result of this script will be returned in the tool's output as `evaluatedScriptResult`.
-  - Required parameters: `startIndex` (or alias `index`) and at least one of `chunkSize` (preferred), `limit` (alias), or `maxLength` must be provided and be a number. Calls missing these required parameters will be rejected with an InvalidParams error. Set these values according to your needs; they may not be empty.
-  - Validation behavior: runtime validation is enforced in `src/index.ts` and the MCP tool will throw/reject when required parameters are missing or invalid. If you prefer automatic fallbacks instead of rejection, modify the validation logic in `src/index.ts`.
-- 🛡️ Debug & Logging
-  - Runtime logs: detailed runtime errors and debug traces are written to `logs/error-log.txt` by default.
-  - Debug flag: some CLI/tool paths accept a `debug` argument which enables more verbose console logging; not all code paths consistently honor a `debug` flag yet. Prefer inspecting `logs/error-log.txt` for complete traces.
-  - To enable console-level debug consistently, a small code change to read a `DEBUG=true` env var or a global `--debug` CLI option can be added (recommended for development).
-- ⚙️ Compatibility & Build notes
-  - The project now utilizes the native global `fetch` API available in Node.js 18+, eliminating the need for the `node-fetch` dependency. This simplifies the dependency tree and leverages built-in capabilities.
-  - `npm run build` runs `tsc` and a `chmod` step that is no-op on Windows; CI or cross-platform scripts should guard `chmod` with a platform check.
-- 🔐 Security considerations
-  - SSRF: validate/whitelist destination hosts if exposing `fetch_api`/`fetch_webpage` publicly.
-  - Rate limiting & auth: add request rate limiting and access controls for public deployments.
-  - Puppeteer flags: `--no-sandbox` reduces isolation; only use it where required and understand the risk on multi-tenant systems.
-- 🧪 Tests & linting
-  - Linting: `npm run lint` is provided; including a pre-commit hook (e.g., using `husky` and `lint-staged`) is recommended to enforce linting standards before commits, ensuring code quality.
-  - Tests: Currently, no unit tests are included. Future plans involve adding comprehensive integration tests for core functionalities like `fetch_api` and `download_file` to ensure reliability and prevent regressions.
-- 📑 All tool schemas and documentation are in English for clarity.
 
 ---
 
@@ -171,7 +146,7 @@ This section outlines the high-level architecture of Web-curl.
 graph TD
     A[User/MCP Host] --> B(CLI / MCP Server)
     B --> C{Tool Handlers}
-    C -- fetch_webpage --> D["Puppeteer (Web Scraping)"]
+    C -- browser_navigate --> D["Puppeteer (Web Scraping)"]
     C -- fetch_api --> E["REST Client"]
     C -- google_search --> F["Google Custom Search API"]
     C -- smart_command --> G["Language Detection & Translation"]
@@ -182,12 +157,10 @@ graph TD
     H --> L["Local Storage"]
 ```
 *   **CLI & MCP Server**: [`src/index.ts`](src/index.ts)
-    Implements both the CLI entry point and the MCP server, exposing tools like `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
-*   **Web Scraping**: Uses Puppeteer for headless browsing, resource blocking, and content extraction.
+    Implements both the CLI entry point and the MCP server.
+*   **Web Scraping**: Uses Puppeteer for headless browsing and content extraction.
 *   **REST Client**: [`src/rest-client.ts`](src/rest-client.ts)
-    Provides a flexible HTTP client for API requests, used by both CLI and MCP tools.
-*   **Configuration**: Managed via CLI options, environment variables, and tool arguments.
-    *   Note: the server creates `logs/` at startup and resolves relative paths against `process.cwd()`. Tools exposed include `download_file` (streaming writes), `fetch_webpage`, `fetch_api`, `google_search`, and `smart_command`.
+    Provides a flexible HTTP client for API requests.
 
 ---
 <a name="installation"></a>
@@ -217,7 +190,6 @@ To integrate web-curl as an MCP server, add the following configuration to your 
         "browser_cookies",
         "browser_configure",
         "browser_links",
-        "browser_wait_for",
         "take_screenshot",
         "parse_document",
         "browser_close",
@@ -238,29 +210,15 @@ To integrate web-curl as an MCP server, add the following configuration to your 
 
 ---
 
-### 🧩 Web-curl Bridge Extension
-
-To make it easier to connect your browser, I've created a **Web-curl Bridge Extension**.
-
-1.  Open Chrome/Edge and go to `chrome://extensions/`.
-2.  Enable **Developer mode** (toggle in the top right).
-3.  Click **Load unpacked** and select the `extension/` folder in this project.
-4.  Click the extension icon to copy the debug command and see the connection status.
-
----
-
 ### 🔑 How to Obtain Google API Key and CX
 
 1.  **Get a Google API Key:**
     - Go to [Google Cloud Console](https://console.cloud.google.com/).
     - Create/select a project, then go to **APIs & Services > Credentials**.
     - Click **Create Credentials > API key** and copy it.
-    *   **Note**: API key activation might take some time. Also be aware of Google's usage quotas for the free tier.
-
 2.  **Get a Custom Search Engine (CX) ID:**
     - Go to [Google Custom Search Engine](https://cse.google.com/cse/all).
     - Create/select a search engine, then copy the **Search engine ID** (CX).
-
 3.  **Enable Custom Search API:**
     - In Google Cloud Console, go to **APIs & Services > Library**.
     - Search for **Custom Search API** and enable it.
@@ -308,7 +266,7 @@ npm run build
     libgtk-3-0 \
     libnspr4 \
     libnss3 \
-    libpango-1.0-0 \
+    libpango-1-0-0 \
     libpangocairo-1.0-0 \
     libstdc++6 \
     libx11-6 \
@@ -329,7 +287,7 @@ npm run build
     xdg-utils
   ```
 
-  For more details, see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting).
+For more details, see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting).
 
 ---
 
@@ -345,7 +303,7 @@ The CLI supports fetching and extracting text content from web pages.
 node build/index.js https://example.com
 
 # With options
-node build/index.js --timeout 30000 --no-block-resources https://example.com
+node build/index.js --timeout 30000 https://example.com
 
 # Save output to a file
 node build/index.js -o result.json https://example.com
@@ -354,30 +312,26 @@ node build/index.js -o result.json https://example.com
 #### Command Line Options
 
 - `--timeout <ms>`: Set navigation timeout (default: 60000)
-- `--no-block-resources`: This option is now deprecated as resource blocking is always disabled by default.
 - `-o <file>`: Output result to specified file
 
 ### MCP Server Usage
 
 Web-curl can be run as an MCP server for integration with Roo Context or other MCP-compatible environments.
 
-#### Exposed Tools (v1.4.0)
+#### Exposed Tools (v1.4.1)
 
 - **browser_navigate**: Navigate the current tab to a URL.
 - **browser_snapshot**: Capture a tree-like accessibility snapshot (Viewport-filtered, token-efficient).
-- **browser_connect**: Connect to an existing browser instance (use active logins/sessions).
 - **browser_action**: Interact with the page (click, type, scroll, hover, press_key).
-- **Browser Extension**: A helper extension is available in the `extension/` folder to simplify connecting your browser to the AI.
 - **browser_tabs**: List, create, close, or select browser tabs (max 10).
 - **batch_navigate**: Navigate to multiple URLs in parallel.
 - **multi_search**: Perform multiple Google searches in parallel.
 - **browser_network_requests**: Get recent network requests (XHR/Fetch).
 - **browser_console_messages**: Get recent browser console messages.
 - **browser_cookies**: Manage browser cookies.
-- **browser_configure**: Configure Proxy, User-Agent, or Viewport.
+- **browser_configure**: Configure Proxy, User-Agent, Viewport, and **Session Persistence** (mandatory).
 - **browser_links**: Get all valid links from the current page.
-- **browser_wait_for**: Wait for text to appear or disappear.
-- **take_screenshot**: Capture a full-page screenshot (saved for 5 days).
+- **take_screenshot**: Capture a full-page screenshot with **custom destination support** (saved for 5 days).
 - **parse_document**: Extract text from PDF/DOCX URLs.
 - **browser_close**: Manually close the browser and all tabs.
 - **google_search**: Search the web using Google Custom Search API.
@@ -392,20 +346,7 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 npm run start
 ```
 
-The server will communicate via stdin/stdout and expose the tools as defined in [`src/index.ts`](src/index.ts:42).
-
-#### MCP Tool Example (fetch_webpage)
-
-```json
-{
-  "name": "fetch_webpage",
-  "arguments": {
-    "url": "https://example.com",
-    "timeout": 60000,
-    "maxLength": 10000
-  }
-}
-```
+The server will communicate via stdin/stdout and expose the tools as defined in [`src/index.ts`](src/index.ts).
 
 ---
 
@@ -419,9 +360,7 @@ Client request for first slice:
   "name": "fetch_webpage",
   "arguments": {
     "url": "https://example.com/long-article",
-    "blockResources": false,
-    "timeout": 60000,
-    "maxLength": 2000,     // maximum number of characters to return for this slice
+    "maxLength": 2000,
     "startIndex": 0
   }
 }
@@ -436,66 +375,23 @@ Server response (example):
   "fetchedAt": "2025-08-19T15:00:00.000Z",
   "startIndex": 0,
   "maxLength": 2000,
-  "remainingCharacters": 8000, // Total characters - (startIndex + content.length)
+  "remainingCharacters": 8000,
   "instruction": "To fetch more content, call fetch_webpage again with startIndex=2000."
 }
 ```
-
-Client fetches the next slice by setting `startIndex` to the previous `startIndex + content.length`:
-```json
-{
-  "name": "fetch_webpage",
-  "arguments": {
-    "url": "https://example.com/long-article",
-    "maxLength": 2000,
-    "startIndex": 2000 // From the instruction in the previous response
-  }
-}
-```
-
-- Continue fetching until `remainingCharacters` is 0 and the `instruction` indicates all content has been fetched.
-- The `content` field will contain the sliced, whitespace-removed HTML.
-
-#### Google Search Integration
-
-Set the following environment variables for Google Custom Search:
-
-- `APIKEY_GOOGLE_SEARCH`: Your Google API key
-- `CX_GOOGLE_SEARCH`: Your Custom Search Engine ID
 
 ---
 
 <a name="configuration"></a>
 ## 🧩 Configuration
 
-- **Resource Blocking**: Block images, stylesheets, and fonts for faster page loading.
+- **Session Persistence**: Save logins and cookies across restarts.
 - **Timeout**: Set navigation and API request timeouts.
-- **Custom Headers**: Pass custom HTTP headers for advanced scenarios.
-- **Authentication**: Supports HTTP Basic Auth via username/password.
 - **Environment Variables**: Used for Google Search API integration.
 
 ---
 
 ## 💡 Examples {#examples}
-
-<details>
-<summary>Fetch Webpage Content (with main article extraction and multi-page crawling)</summary>
-
-```json
-{
-  "name": "fetch_webpage",
-  "arguments": {
-    "url": "https://en.wikipedia.org/wiki/Web_scraping",
-    "blockResources": true,
-    "maxLength": 5000,
-    "nextPageSelector": ".pagination-next a",
-    "maxPages": 3,
-    "debug": true,
-    "evaluateScript": "document.body.textContent.substring(0, 100)"
-  }
-}
-```
-</details>
 
 <details>
 <summary>Make a REST API Request</summary>
@@ -516,50 +412,6 @@ Set the following environment variables for Google Custom Search:
 </details>
 
 <details>
-<summary>Example `fetch_api` Response (with `responseTimeMs`)</summary>
-
-```json
-{
-  "status": 200,
-  "statusText": "OK",
-  "headers": {
-    "content-type": "application/json; charset=utf-8"
-    // ... other headers
-  },
-  "body": {
-    "id": 12345,
-    "name": "nodejs/node",
-    // ... other body content
-  },
-  "ok": true,
-  "url": "https://api.github.com/repos/nodejs/node",
-  "bodyLength": 1234,
-  "truncated": false,
-  "responseTimeMs": 150.75 // Example response time in milliseconds
-}
-```
-</details>
-
-<details>
-<summary>Google Search (with advanced filters)</summary>
-
-```json
-{
-  "name": "google_search",
-  "arguments": {
-    "query": "web scraping best practices",
-    "num": 5,
-    "language": "lang_en",
-    "region": "US",
-    "site": "wikipedia.org",
-    "dateRestrict": "w1",
-    "debug": true
-  }
-}
-```
-</details>
-
-<details>
 <summary>Download File</summary>
 
 ```json
@@ -572,16 +424,31 @@ Set the following environment variables for Google Custom Search:
 }
 ```
 
-Note: `destinationFolder` can be either a relative path (resolved against the current working directory, `process.cwd()`) or an absolute path. The server will create the destination folder if it does not exist.
+Note: `destinationFolder` can be either a relative path (resolved against the project root) or an absolute path. The server will create the destination folder if it does not exist.
+</details>
+
+<details>
+<summary>Configure Browser (with Session Persistence)</summary>
+
+```json
+{
+  "name": "browser_configure",
+  "arguments": {
+    "persistSession": true,
+    "proxy": "http://proxy.example.com:8080",
+    "viewport": { "width": 1920, "height": 1080 }
+  }
+}
+```
+
+Note: `persistSession` is mandatory. When `true`, all cookies and login sessions are saved in the `user_data/` directory. Changing this setting will restart the browser.
 </details>
 
 ---
 ## 🛠️ Troubleshooting {#troubleshooting}
 
 - **Timeout Errors**: Increase the `timeout` parameter if requests are timing out.
-- **Blocked Content**: If content is missing, try disabling resource blocking or adjusting `resourceTypesToBlock`.
 - **Google Search Fails**: Ensure `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH` are set in your environment.
-- **Binary/Unknown Content**: Non-text responses are base64-encoded.
 - **Error Logs**: Check the `logs/error-log.txt` file for detailed error messages.
 
 ---
@@ -591,8 +458,7 @@ Note: `destinationFolder` can be either a relative path (resolved against the cu
 <details>
 <summary>Click for advanced tips</summary>
 
-- Resource blocking is always disabled, ensuring faster and lighter scraping.
-- For large pages, use `maxLength` and `startIndex` to fetch content in slices. The server will provide `remainingCharacters` and an `instruction` for fetching the next part (includes a suggestion to stop if enough information is gathered).
+- For large pages, use `maxLength` and `startIndex` to fetch content in slices.
 - Always validate your tool arguments to avoid errors.
 - Secure your API keys and sensitive data using environment variables.
 - Review the MCP tool schemas in [`src/index.ts`](src/index.ts) for all available options.

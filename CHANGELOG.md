@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.1] - 2026-02-17
+
+### Added
+- **Session Persistence**: Added `persistSession` parameter to `browser_configure` (mandatory). Enabling this allows the AI to save login sessions, cookies, and cache in a local `user_data/` directory.
+- **Custom Screenshot Destinations**: `take_screenshot` now supports a `destinationFolder` parameter with automatic directory creation and path validation.
+- **Dynamic Cleanup**: The 5-day automatic cleanup now dynamically tracks and cleans custom screenshot directories used during the session.
+
+### Removed
+- **`browser_connect`**: Removed the remote debugging connection tool to focus on built-in automation.
+
+### Fixed
+- **Build Stability**: Fixed TypeScript errors related to browser process PID tracking.
+
 ## [1.4.0] - 2026-02-13
 
 ### Added
