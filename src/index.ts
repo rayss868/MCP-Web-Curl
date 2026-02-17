@@ -65,7 +65,6 @@ class WebCurlServer {
   private customScreenshotDirs: Set<string> = new Set();
   private proxy: string | null = null;
   private userAgent: string | null = null;
-  private persistSession: boolean = false;
   private browserURL: string | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
 
@@ -78,7 +77,7 @@ class WebCurlServer {
     this.server = new Server(
       {
         name: 'web-curl',
-        version: '1.4.0',
+        version: '1.4.2',
       },
       {
         capabilities: {
@@ -206,11 +205,9 @@ class WebCurlServer {
     };
 
     if (this.proxy) launchOptions.args.push(`--proxy-server=${this.proxy}`);
-    if (this.persistSession) {
-      const userDataDir = path.join(PROJECT_ROOT, 'user_data');
-      if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-      launchOptions.userDataDir = userDataDir;
-    }
+    const userDataDir = path.join(PROJECT_ROOT, 'user_data');
+    if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
+    launchOptions.userDataDir = userDataDir;
 
     if (this.browserURL) {
       this.browser = await puppeteer.connect({ browserURL: this.browserURL });
@@ -239,7 +236,7 @@ class WebCurlServer {
         this.browser = null;
         this.pages = [];
       }
-    }, 60000); // 1 minute idle timeout
+    }, 15 * 60 * 1000); // 15 minute idle timeout
   }
 
   private async getPage(index?: number): Promise<Page> {
@@ -380,8 +377,15 @@ class WebCurlServer {
         },
         {
           name: 'browser_snapshot',
-          description: 'Captures a structured, tree-like accessibility snapshot of the current page. This format is highly optimized for AI context windows, providing essential information like roles, names, and unique \"ref\" IDs (e.g., \"ref:e12\") for interactive elements. Use these \"ref\" IDs with the \"browser_action\" tool to interact with the page.',
-          inputSchema: { type: 'object', properties: {} }
+          description: 'Captures a structured accessibility tree snapshot (default) or raw HTML. Use mode="html" with startIndex/endIndex to return a safe slice of the HTML without overloading context.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              mode: { type: 'string', enum: ['tree', 'html'], description: 'Snapshot mode: "tree" (accessibility tree) or "html" (raw HTML slice). Defaults to "tree".' },
+              startIndex: { type: 'number', description: 'Start index for HTML slicing (mode="html"). Defaults to 0.' },
+              endIndex: { type: 'number', description: 'End index for HTML slicing (mode="html"). Defaults to startIndex + 20000 (clamped to HTML length).' }
+            }
+          }
         },
         {
           name: 'browser_action',
@@ -431,26 +435,13 @@ class WebCurlServer {
           inputSchema: { type: 'object', properties: {} }
         },
         {
-          name: 'browser_cookies',
-          description: 'Manages browser cookies for the current session. Allows getting, setting, deleting, or clearing all cookies.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              action: { type: 'string', enum: ['get', 'set', 'delete', 'clear'], description: 'The cookie operation to perform.' },
-              cookies: { type: 'array', items: { type: 'object' }, description: 'An array of cookie objects to set or delete. Required for \"set\" and \"delete\" actions.' }
-            },
-            required: ['action']
-          }
-        },
-        {
           name: 'browser_configure',
-          description: 'Configures browser-wide settings such as Proxy, User-Agent, and Viewport dimensions. These settings apply to the entire browser instance.',
+          description: 'Configures browser-wide settings such as Proxy, User-Agent, and Viewport dimensions. Sessions are persisted automatically across browsing and browser restarts.',
           inputSchema: {
             type: 'object',
             properties: {
               proxy: { type: 'string', description: 'Proxy server URL (e.g., http://proxy.example.com:8080).' },
               userAgent: { type: 'string', description: 'Custom User-Agent string to identify the browser.' },
-              persistSession: { type: 'boolean', description: 'Whether to persist browser session (cookies, logins, etc.) across restarts. If changed, the browser will restart.' },
               viewport: {
                 type: 'object',
                 properties: {
@@ -458,8 +449,7 @@ class WebCurlServer {
                   height: { type: 'number', description: 'Viewport height in pixels.' }
                 }
               }
-            },
-            required: ['persistSession']
+            }
           }
         },
         {
@@ -582,7 +572,6 @@ class WebCurlServer {
         'browser_tabs',
         'browser_console_messages',
         'browser_network_requests',
-        'browser_cookies',
         'browser_configure',
         'browser_close'
       ];
@@ -598,7 +587,6 @@ class WebCurlServer {
         else if (toolName === 'browser_tabs') type = 'TABS';
         else if (toolName === 'browser_console_messages') type = 'CONSOLE';
         else if (toolName === 'browser_network_requests') type = 'NETWORK';
-        else if (toolName === 'browser_cookies') type = 'COOKIES';
         else if (toolName === 'browser_configure') type = 'CONFIGURE';
         else if (toolName === 'browser_close') type = 'CLOSE';
 
@@ -722,6 +710,34 @@ class WebCurlServer {
           }));
           return { content: [{ type: 'text', text: JSON.stringify(searchResults, null, 2) }] };
         } else if (toolName === 'browser_snapshot') {
+          const { mode = 'tree', startIndex = 0, endIndex } = args as any;
+          if (mode === 'html') {
+            const html = await page.content();
+            const safeStart = Math.max(0, Math.floor(startIndex));
+            const defaultEnd = safeStart + 20000;
+            const safeEnd = Math.min(html.length, endIndex !== undefined ? Math.floor(endIndex) : defaultEnd);
+            const slice = html.slice(safeStart, safeEnd);
+            const remainingCharacters = Math.max(0, html.length - safeEnd);
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      mode: 'html',
+                      totalLength: html.length,
+                      startIndex: safeStart,
+                      endIndex: safeEnd,
+                      remainingCharacters,
+                      content: slice
+                    },
+                    null,
+                    2
+                  )
+                }
+              ]
+            };
+          }
           const tree = await this.getAccessibilityTree(page);
           return { content: [{ type: 'text', text: tree }] };
         } else if (toolName === 'browser_action') {
@@ -741,7 +757,7 @@ class WebCurlServer {
           const links = await page.evaluate(() => Array.from(document.querySelectorAll('a')).map(a => ({ text: a.innerText.trim(), href: a.href })).filter(l => l.href.startsWith('http')));
           return { content: [{ type: 'text', text: JSON.stringify(links, null, 2) }] };
         } else if (toolName === 'browser_configure') {
-          const { proxy, userAgent, viewport, persistSession } = args as any;
+          const { proxy, userAgent, viewport } = args as any;
           let restartNeeded = false;
 
           if (proxy !== undefined && proxy !== this.proxy) {
@@ -752,11 +768,6 @@ class WebCurlServer {
             this.userAgent = userAgent;
             restartNeeded = true;
           }
-          if (persistSession !== undefined && persistSession !== this.persistSession) {
-            this.persistSession = persistSession;
-            restartNeeded = true;
-          }
-
           if (restartNeeded && this.browser) {
             await this.browser.close();
             this.browser = null;
@@ -770,12 +781,6 @@ class WebCurlServer {
             }
           }
           return { content: [{ type: 'text', text: restartNeeded ? 'Configuration updated (Browser restarted)' : 'Configuration updated' }] };
-        } else if (toolName === 'browser_cookies') {
-          const { action, cookies } = args as any;
-          if (action === 'get') return { content: [{ type: 'text', text: JSON.stringify(await page.cookies(), null, 2) }] };
-          if (action === 'set') { await page.setCookie(...cookies); return { content: [{ type: 'text', text: 'OK' }] }; }
-          if (action === 'clear') { const c = await page.cookies(); await page.deleteCookie(...c); return { content: [{ type: 'text', text: 'Cleared' }] }; }
-          throw new Error('Invalid action');
         } else if (toolName === 'parse_document') {
           const { url } = args as any;
           const res = await fetch(url);

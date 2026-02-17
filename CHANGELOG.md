@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.2] - 2026-02-17
+
+### Changed
+- **Always-Persistent Sessions**: Browser sessions are now always persisted by default. Login cookies and session data are continuously reused from `user_data/` without requiring any toggle.
+- **Simplified Browser Config**: Removed `persistSession` from `browser_configure`; now it only handles proxy, user-agent, and viewport settings.
+- **Idle Timeout**: Increased browser idle auto-close from 1 minute to 15 minutes.
+- **browser_snapshot HTML Mode**: Added raw HTML snapshot slicing via `mode: "html"` with `startIndex`/`endIndex`.
+
+### Removed
+- **`browser_cookies` Tool**: Removed explicit cookie management tool to simplify the browsing workflow and avoid split session state handling.
+
 ## [1.4.1] - 2026-02-17
 
 ### Added
@@ -29,7 +40,6 @@
 - **Chrome DevTools Integration**:
     - `browser_network_requests`: Capture and inspect network traffic (XHR/Fetch).
     - `browser_console_messages`: Access browser console logs for debugging.
-    - `browser_cookies`: Manage browser cookies (get, set, delete, clear).
     - `browser_configure`: Configure Proxy, User-Agent, and Viewport settings.
 - **Resource Management**:
     - **Idle Timeout**: Browser process automatically closes after 1 minute of inactivity to save resources.

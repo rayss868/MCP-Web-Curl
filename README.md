@@ -88,24 +88,24 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 ## ✨ Features
 
-### 🚀 Deep Research & Automation (v1.4.1)
+### 🚀 Deep Research & Automation (v1.4.2)
 
 - **Advanced Browser Automation**: Full control over Chromium via Puppeteer (click, type, scroll, hover, key presses).
-- **Session Persistence**: Optional persistent browser profiles. Enabling `persistSession` allows the AI to save login sessions, cookies, and cache in a local `user_data/` directory.
+- **Always-On Session Persistence**: Browser profiles are now always persistent. Login sessions, cookies, and cache are automatically saved in a local `user_data/` directory.
 - **Multi-Tab Research**: Manage up to 10 concurrent tabs with automatic rotation. Open multiple pages or perform parallel searches to gather information faster.
 - **Token-Efficient Snapshots**:
     - **Accessibility Tree**: Clean, structured snapshots instead of messy HTML.
+    - **HTML Slice Mode**: Raw HTML with `startIndex`/`endIndex` for safe chunking when needed.
     - **Viewport Filtering**: Automatically filters out elements not visible on screen, saving up to 90% of context tokens on long pages.
 - **Chrome DevTools Integration**:
     - **Network Monitoring**: Capture XHR/Fetch requests to see data flowing behind the scenes.
     - **Console Logs**: Access browser console output for debugging or data extraction.
-    - **Cookie Management**: Get, set, or clear cookies for session-based research.
     - **Browser Configuration**: Set custom User-Agents, Proxies, and Viewport sizes.
 - **Parallel Batch Operations**:
     - `multi_search`: Run multiple Google searches at once.
     - `batch_navigate`: Open and load multiple websites in parallel.
 - **Intelligent Resource Management**:
-    - **Idle Auto-Close**: Browser automatically shuts down after 1 minute of inactivity to save RAM/CPU.
+    - **Idle Auto-Close**: Browser automatically shuts down after 15 minutes of inactivity to save RAM/CPU.
     - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
 - **Media & Documents**:
     - **Full-Page Screenshots**: Capture high-quality screenshots with a 5-day auto-cleanup lifecycle and custom destination support.
@@ -187,7 +187,6 @@ To integrate web-curl as an MCP server, add the following configuration to your 
         "multi_search",
         "browser_network_requests",
         "browser_console_messages",
-        "browser_cookies",
         "browser_configure",
         "browser_links",
         "take_screenshot",
@@ -321,15 +320,14 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 #### Exposed Tools (v1.4.1)
 
 - **browser_navigate**: Navigate the current tab to a URL.
-- **browser_snapshot**: Capture a tree-like accessibility snapshot (Viewport-filtered, token-efficient).
+- **browser_snapshot**: Capture a tree-like accessibility snapshot (default) or raw HTML slices using `mode: "html"` with `startIndex`/`endIndex`.
 - **browser_action**: Interact with the page (click, type, scroll, hover, press_key).
 - **browser_tabs**: List, create, close, or select browser tabs (max 10).
 - **batch_navigate**: Navigate to multiple URLs in parallel.
 - **multi_search**: Perform multiple Google searches in parallel.
 - **browser_network_requests**: Get recent network requests (XHR/Fetch).
 - **browser_console_messages**: Get recent browser console messages.
-- **browser_cookies**: Manage browser cookies.
-- **browser_configure**: Configure Proxy, User-Agent, Viewport, and **Session Persistence** (mandatory).
+- **browser_configure**: Configure Proxy, User-Agent, and Viewport. Session persistence is always enabled.
 - **browser_links**: Get all valid links from the current page.
 - **take_screenshot**: Capture a full-page screenshot with **custom destination support** (saved for 5 days).
 - **parse_document**: Extract text from PDF/DOCX URLs.
@@ -385,7 +383,7 @@ Server response (example):
 <a name="configuration"></a>
 ## 🧩 Configuration
 
-- **Session Persistence**: Save logins and cookies across restarts.
+- **Session Persistence**: Always enabled. Logins and cookies are automatically reused across restarts.
 - **Timeout**: Set navigation and API request timeouts.
 - **Environment Variables**: Used for Google Search API integration.
 
@@ -428,20 +426,19 @@ Note: `destinationFolder` can be either a relative path (resolved against the pr
 </details>
 
 <details>
-<summary>Configure Browser (with Session Persistence)</summary>
+<summary>Configure Browser</summary>
 
 ```json
 {
   "name": "browser_configure",
   "arguments": {
-    "persistSession": true,
     "proxy": "http://proxy.example.com:8080",
     "viewport": { "width": 1920, "height": 1080 }
   }
 }
 ```
 
-Note: `persistSession` is mandatory. When `true`, all cookies and login sessions are saved in the `user_data/` directory. Changing this setting will restart the browser.
+Note: Session persistence is always enabled. Cookies and login sessions are automatically stored in the `user_data/` directory.
 </details>
 
 ---
