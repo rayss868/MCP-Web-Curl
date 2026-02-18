@@ -52,6 +52,43 @@ interface ScreenshotArgs {
   destinationFolder?: string;
 }
 
+interface BrowserFlowArgs {
+  /** If provided, navigate to this URL before doing anything else */
+  url?: string;
+
+  /** If true, opens a new tab before running the flow */
+  newTab?: boolean;
+
+  /** If provided, selects this tab index first (0-based) */
+  tabIndex?: number;
+
+  /** Navigation timeout (ms). Defaults to 90000 */
+  navigationTimeoutMs?: number;
+
+  /** If set, waits for network idle after navigation (recommended for SPAs). Defaults to true when url is provided. */
+  waitForNetworkIdle?: boolean;
+
+  /** Network idle wait timeout (ms). Defaults to 30000 */
+  networkIdleTimeoutMs?: number;
+
+  /** Network idle time window (ms). Defaults to 1000 */
+  networkIdleTimeMs?: number;
+
+  /** Extra delay after navigation to allow hydration. Defaults to 1500 */
+  stabilizeMs?: number;
+
+  /** Optional page interactions to run after navigation */
+  actions?: BrowserActionArgs[];
+
+  /** What to return at the end (defaults to snapshot tree) */
+  result?:
+    | { type: 'snapshot'; mode?: 'tree' | 'html'; startIndex?: number; endIndex?: number }
+    | { type: 'screenshot'; filename?: string; fullPage?: boolean; destinationFolder?: string }
+    | { type: 'links' }
+    | { type: 'network'; includeStatic?: boolean }
+    | { type: 'console' };
+}
+
 class WebCurlServer {
   private server: Server;
   private browser: Browser | null = null;
@@ -355,7 +392,8 @@ class WebCurlServer {
       tools: [
         {
           name: 'browser_navigate',
-          description: 'Navigates the active browser tab to a specific URL. Use this to load a webpage before performing other actions like taking snapshots or clicking elements. It waits for the \"domcontentloaded\" event by default.',
+          description:
+            'Open a URL in the active tab. Use this before snapshot/action/screenshot. Waits for domcontentloaded, then tries network-idle (up to 30s) + a short stabilization delay (useful for SPAs).',
           inputSchema: {
             type: 'object',
             properties: {
@@ -365,8 +403,60 @@ class WebCurlServer {
           }
         },
         {
+          name: 'browser_flow',
+          description:
+            'One-call workflow to reduce tool-chaining: optional navigate → optional wait/stabilize → optional actions → return ONE result (snapshot OR screenshot OR links OR console OR network). Use when the user wants multiple steps like “open this then screenshot”.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', description: 'Optional URL to open before running actions.' },
+              newTab: { type: 'boolean', description: 'If true, opens a new tab first (default false).' },
+              tabIndex: { type: 'number', description: 'Optional tab index to select before running the flow.' },
+              navigationTimeoutMs: { type: 'number', description: 'Navigation timeout in ms (default 90000).' },
+              waitForNetworkIdle: {
+                type: 'boolean',
+                description: 'After navigation, wait for network-idle (recommended for SPAs). Default true when url is provided.'
+              },
+              networkIdleTimeoutMs: { type: 'number', description: 'Network-idle wait timeout in ms (default 30000).' },
+              networkIdleTimeMs: { type: 'number', description: 'Network-idle window in ms (default 1000).' },
+              stabilizeMs: { type: 'number', description: 'Extra delay after navigation to let hydration finish (default 1500).' },
+              actions: {
+                type: 'array',
+                description: 'Optional list of page interactions to run after navigation.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    action: { type: 'string', enum: ['click', 'type', 'scroll', 'press_key', 'hover', 'waitForSelector'], description: 'Interaction type.' },
+                    selector: { type: 'string', description: 'CSS selector or ref from browser_snapshot (e.g., ref:abcd).' },
+                    text: { type: 'string', description: 'Text to type (for action="type").' },
+                    direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction (for action="scroll").' },
+                    key: { type: 'string', description: 'Keyboard key (for action="press_key").' },
+                    timeout: { type: 'number', description: 'Wait timeout for selector-based actions (default 30000).' }
+                  },
+                  required: ['action']
+                }
+              },
+              result: {
+                type: 'object',
+                description: 'What to return at the end. Defaults to {type:"snapshot", mode:"tree"}.',
+                properties: {
+                  type: { type: 'string', enum: ['snapshot', 'screenshot', 'links', 'network', 'console'], description: 'Final output type.' },
+                  mode: { type: 'string', enum: ['tree', 'html'], description: 'For snapshot only: tree (default) or html slice.' },
+                  startIndex: { type: 'number', description: 'For snapshot html: slice start (default 0).' },
+                  endIndex: { type: 'number', description: 'For snapshot html: slice end (default startIndex+20000).' },
+                  filename: { type: 'string', description: 'For screenshot: custom filename.' },
+                  fullPage: { type: 'boolean', description: 'For screenshot: full page (true) or viewport (false). Default true.' },
+                  destinationFolder: { type: 'string', description: 'For screenshot: output directory (relative to project root or absolute).' },
+                  includeStatic: { type: 'boolean', description: 'For network: include images/fonts/css (default false).' }
+                },
+                required: ['type']
+              }
+            }
+          }
+        },
+        {
           name: 'batch_navigate',
-          description: 'Navigates to multiple URLs simultaneously, each in its own new browser tab. This is much faster than sequential navigation for multi-source research.',
+          description: 'Open multiple URLs, each in its own new tab (sequential). Use when you need many pages ready to inspect. Returns a list with tab indexes.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -377,7 +467,7 @@ class WebCurlServer {
         },
         {
           name: 'browser_snapshot',
-          description: 'Captures a structured accessibility tree snapshot (default) or raw HTML. Use mode="html" with startIndex/endIndex to return a safe slice of the HTML without overloading context.',
+          description: 'Return a TEXT snapshot of the current page (NOT an image). Default mode "tree" returns a compact accessibility tree with [ref:...] you can click/type into. Use mode "html" to get raw HTML slices (20KB default) with startIndex/endIndex.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -389,7 +479,7 @@ class WebCurlServer {
         },
         {
           name: 'browser_action',
-          description: 'Performs an interaction on the current page. You can click, type, scroll, hover, or wait for specific elements. Elements can be targeted using standard CSS selectors or the unique \"ref\" IDs obtained from a \"browser_snapshot\".',
+          description: 'Interact with the current page (click/type/scroll/hover/press_key/waitForSelector). For best reliability, use ref IDs from browser_snapshot (tree) like "ref:abcd".',
           inputSchema: {
             type: 'object',
             properties: {
@@ -405,13 +495,13 @@ class WebCurlServer {
         },
         {
           name: 'take_screenshot',
-          description: 'Captures a full-page or viewport screenshot of the current page. Screenshots are saved locally and have a 5-day automatic cleanup lifecycle. Returns the local file path.',
+          description: 'Capture a PNG screenshot and return the local file path. Default fullPage=true (can be slow on very long pages); set fullPage=false for a fast viewport-only screenshot.',
           inputSchema: {
             type: 'object',
             properties: {
-              filename: { type: 'string', description: 'Optional custom filename for the screenshot.' },
-              fullPage: { type: 'boolean', description: 'Whether to capture the entire scrollable page (true) or just the visible viewport (false). Defaults to true.' },
-              destinationFolder: { type: 'string', description: 'Optional custom directory path to save the screenshot. If not provided, defaults to the internal screenshots folder. Supports absolute or relative paths.' }
+              filename: { type: 'string', description: 'Optional custom filename for the screenshot (e.g., page.png).' },
+              fullPage: { type: 'boolean', description: 'true=full page, false=viewport only. Default true.' },
+              destinationFolder: { type: 'string', description: 'Optional output directory (relative to project root or absolute). Directory will be created if missing.' }
             }
           }
         },
@@ -436,7 +526,7 @@ class WebCurlServer {
         },
         {
           name: 'browser_configure',
-          description: 'Configures browser-wide settings such as Proxy, User-Agent, and Viewport dimensions. Sessions are persisted automatically across browsing and browser restarts.',
+          description: 'Set browser-wide settings (proxy, user-agent, viewport). Sessions are always persisted automatically using the local user_data/ profile.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -673,6 +763,117 @@ class WebCurlServer {
           await new Promise(r => setTimeout(r, 1500));
           
           return { content: [{ type: 'text', text: `Navigated to ${url}` }] };
+        } else if (toolName === 'browser_flow') {
+          const flow = (args || {}) as BrowserFlowArgs;
+
+          // Tab selection / creation
+          if (flow.tabIndex !== undefined) {
+            if (flow.tabIndex < 0 || flow.tabIndex >= this.pages.length) throw new Error('Invalid tabIndex');
+            this.activePageIndex = flow.tabIndex;
+          }
+          if (flow.newTab) {
+            await this.createNewPage();
+            this.activePageIndex = this.pages.length - 1;
+          }
+
+          const p = await this.getPage();
+
+          // Optional navigate
+          if (flow.url) {
+            const navTimeout = flow.navigationTimeoutMs ?? 90000;
+            this.networkRequests.set(p, []);
+            this.consoleMessages.set(p, []);
+            await p.goto(flow.url, { waitUntil: 'domcontentloaded', timeout: navTimeout });
+
+            const shouldWaitIdle = flow.waitForNetworkIdle ?? true;
+            if (shouldWaitIdle) {
+              const idleTime = flow.networkIdleTimeMs ?? 1000;
+              const idleTimeout = flow.networkIdleTimeoutMs ?? 30000;
+              try {
+                await p.waitForNetworkIdle({ idleTime, timeout: idleTimeout });
+              } catch (e) {
+                console.error('[Browser] Network idle timeout (browser_flow), proceeding anyway');
+              }
+            }
+
+            const stabilize = flow.stabilizeMs ?? 1500;
+            if (stabilize > 0) await new Promise(r => setTimeout(r, stabilize));
+          }
+
+          // Optional actions
+          if (flow.actions && flow.actions.length > 0) {
+            for (const action of flow.actions) {
+              await this.performBrowserAction(action);
+            }
+          }
+
+          const result = flow.result ?? { type: 'snapshot', mode: 'tree' };
+
+          if (result.type === 'snapshot') {
+            const mode = result.mode ?? 'tree';
+            if (mode === 'html') {
+              const html = await p.content();
+              const startIndex = result.startIndex ?? 0;
+              const safeStart = Math.max(0, Math.floor(startIndex));
+              const defaultEnd = safeStart + 20000;
+              const safeEnd = Math.min(html.length, result.endIndex !== undefined ? Math.floor(result.endIndex) : defaultEnd);
+              const slice = html.slice(safeStart, safeEnd);
+              const remainingCharacters = Math.max(0, html.length - safeEnd);
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(
+                      {
+                        mode: 'html',
+                        totalLength: html.length,
+                        startIndex: safeStart,
+                        endIndex: safeEnd,
+                        remainingCharacters,
+                        content: slice
+                      },
+                      null,
+                      2
+                    )
+                  }
+                ]
+              };
+            }
+
+            const tree = await this.getAccessibilityTree(p);
+            return { content: [{ type: 'text', text: tree }] };
+          }
+
+          if (result.type === 'screenshot') {
+            const filePath = await this.takeScreenshot({
+              filename: result.filename,
+              fullPage: result.fullPage,
+              destinationFolder: result.destinationFolder
+            });
+            return { content: [{ type: 'text', text: `Screenshot saved: ${filePath}` }] };
+          }
+
+          if (result.type === 'links') {
+            const links = await p.evaluate(() =>
+              Array.from(document.querySelectorAll('a'))
+                .map(a => ({ text: a.innerText.trim(), href: (a as HTMLAnchorElement).href }))
+                .filter(l => l.href.startsWith('http'))
+            );
+            return { content: [{ type: 'text', text: JSON.stringify(links, null, 2) }] };
+          }
+
+          if (result.type === 'console') {
+            return { content: [{ type: 'text', text: JSON.stringify(this.consoleMessages.get(p) || [], null, 2) }] };
+          }
+
+          if (result.type === 'network') {
+            const includeStatic = result.includeStatic ?? false;
+            const reqs = this.networkRequests.get(p) || [];
+            const filtered = includeStatic ? reqs : reqs.filter(r => !['image', 'font', 'stylesheet', 'media'].includes(r.resourceType));
+            return { content: [{ type: 'text', text: JSON.stringify(filtered, null, 2) }] };
+          }
+
+          throw new Error('Invalid browser_flow result type');
         } else if (toolName === 'batch_navigate') {
           const { urls } = args as any;
           const results = [];

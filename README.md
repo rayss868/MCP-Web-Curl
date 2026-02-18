@@ -317,26 +317,26 @@ node build/index.js -o result.json https://example.com
 
 Web-curl can be run as an MCP server for integration with Roo Context or other MCP-compatible environments.
 
-#### Exposed Tools (v1.4.1)
+#### Exposed Tools (v1.4.2)
 
-- **browser_navigate**: Navigate the current tab to a URL.
-- **browser_snapshot**: Capture a tree-like accessibility snapshot (default) or raw HTML slices using `mode: "html"` with `startIndex`/`endIndex`.
-- **browser_action**: Interact with the page (click, type, scroll, hover, press_key).
-- **browser_tabs**: List, create, close, or select browser tabs (max 10).
-- **batch_navigate**: Navigate to multiple URLs in parallel.
-- **multi_search**: Perform multiple Google searches in parallel.
-- **browser_network_requests**: Get recent network requests (XHR/Fetch).
-- **browser_console_messages**: Get recent browser console messages.
-- **browser_configure**: Configure Proxy, User-Agent, and Viewport. Session persistence is always enabled.
-- **browser_links**: Get all valid links from the current page.
-- **take_screenshot**: Capture a full-page screenshot with **custom destination support** (saved for 5 days).
+- **browser_flow**: One-call workflow (optional navigate → optional actions → return snapshot/screenshot/links/console/network). Use this to avoid calling many tools.
+- **browser_navigate**: Open a URL in the active tab (includes network-idle wait + short stabilization).
+- **browser_snapshot**: TEXT snapshot (tree by default, or `mode: "html"` slices with `startIndex`/`endIndex`).
+- **browser_action**: Interact with the page (click/type/scroll/hover/press_key/waitForSelector). Best used with `ref:` from snapshot.
+- **browser_tabs**: List, create, close, or select tabs (max 10).
+- **batch_navigate**: Open many URLs (each in a new tab) and return tab indexes.
+- **multi_search**: Run multiple Google searches in parallel.
+- **browser_network_requests**: Recent network requests.
+- **browser_console_messages**: Recent console logs/warnings/errors.
+- **browser_configure**: Set proxy/user-agent/viewport (session persistence is always on via `user_data/`).
+- **browser_links**: Extract all valid links from the page.
+- **take_screenshot**: PNG screenshot to disk. Default `fullPage: true` (set `false` for faster viewport-only).
 - **parse_document**: Extract text from PDF/DOCX URLs.
-- **browser_close**: Manually close the browser and all tabs.
-- **google_search**: Search the web using Google Custom Search API.
-- **fetch_api**: Make REST API requests.
-- **smart_command**: Free-form command with auto language detection.
+- **browser_close**: Close browser and tabs.
+- **google_search**: Google Custom Search (single query).
+- **fetch_api**: REST API request with response truncation (`limit`).
+- **smart_command**: Natural-language search command (auto language detect + translate + query enrichment).
 - **download_file**: Download a file from a URL.
-- **fetch_webpage**: (Legacy) Retrieve text/HTML from a page.
 
 #### Running as MCP Server
 
@@ -348,33 +348,31 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
 
 ---
 
-### 🚦 Content Slicing Example (Recommended for Large Pages)
+### 🚦 HTML Slicing Example (Recommended for Large Pages)
 
-For large documents, you can fetch content in slices using `startIndex` and `maxLength`. The server will return the sliced content, the total characters available (after whitespace removal), and an instruction for fetching the next part.
+Use [`browser_snapshot`](src/index.ts:469) with `mode: "html"` when you need raw HTML but want to keep the response small.
 
 Client request for first slice:
 ```json
 {
-  "name": "fetch_webpage",
+  "name": "browser_snapshot",
   "arguments": {
-    "url": "https://example.com/long-article",
-    "maxLength": 2000,
-    "startIndex": 0
+    "mode": "html",
+    "startIndex": 0,
+    "endIndex": 20000
   }
 }
 ```
 
-Server response (example):
+Response (example):
 ```json
 {
-  "url": "https://example.com/long-article",
-  "title": "Long Article Title",
-  "content": "First 2000 characters of the whitespace-removed HTML...",
-  "fetchedAt": "2025-08-19T15:00:00.000Z",
+  "mode": "html",
+  "totalLength": 123456,
   "startIndex": 0,
-  "maxLength": 2000,
-  "remainingCharacters": 8000,
-  "instruction": "To fetch more content, call fetch_webpage again with startIndex=2000."
+  "endIndex": 20000,
+  "remainingCharacters": 103456,
+  "content": "<html>...first slice...</html>"
 }
 ```
 

@@ -7,6 +7,7 @@
 - **Simplified Browser Config**: Removed `persistSession` from `browser_configure`; now it only handles proxy, user-agent, and viewport settings.
 - **Idle Timeout**: Increased browser idle auto-close from 1 minute to 15 minutes.
 - **browser_snapshot HTML Mode**: Added raw HTML snapshot slicing via `mode: "html"` with `startIndex`/`endIndex`.
+- **Tooling UX**: Improved tool descriptions for better agent tool selection and added `browser_flow` umbrella tool to reduce multi-call workflows.
 
 ### Removed
 - **`browser_cookies` Tool**: Removed explicit cookie management tool to simplify the browsing workflow and avoid split session state handling.
