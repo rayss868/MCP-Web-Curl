@@ -92,18 +92,15 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 - **Advanced Browser Automation**: Full control over Chromium via Puppeteer (click, type, scroll, hover, key presses).
 - **Always-On Session Persistence**: Browser profiles are now always persistent. Login sessions, cookies, and cache are automatically saved in a local `user_data/` directory.
-- **Multi-Tab Research**: Manage up to 10 concurrent tabs with automatic rotation. Open multiple pages or perform parallel searches to gather information faster.
 - **Token-Efficient Snapshots**:
     - **Accessibility Tree**: Clean, structured snapshots instead of messy HTML.
     - **HTML Slice Mode**: Raw HTML with `startIndex`/`endIndex` for safe chunking when needed.
     - **Viewport Filtering**: Automatically filters out elements not visible on screen, saving up to 90% of context tokens on long pages.
-- **Chrome DevTools Integration**:
-    - **Network Monitoring**: Capture XHR/Fetch requests to see data flowing behind the scenes.
-    - **Console Logs**: Access browser console output for debugging or data extraction.
-    - **Browser Configuration**: Set custom User-Agents, Proxies, and Viewport sizes.
-- **Parallel Batch Operations**:
-    - `multi_search`: Run multiple Google searches at once.
-    - `batch_navigate`: Open and load multiple websites in parallel.
+- **Chrome DevTools Integration (implemented, but hidden from `list_tools`)**:
+    - Network Monitoring (`browser_network_requests`)
+    - Console Logs (`browser_console_messages`)
+- **Parallel Search**:
+    - `multi_search`: Run multiple Google searches at once (only exposed search tool).
 - **Intelligent Resource Management**:
     - **Idle Auto-Close**: Browser automatically shuts down after 15 minutes of inactivity to save RAM/CPU.
     - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
@@ -146,10 +143,10 @@ This section outlines the high-level architecture of Web-curl.
 graph TD
     A[User/MCP Host] --> B(CLI / MCP Server)
     B --> C{Tool Handlers}
-    C -- browser_navigate --> D["Puppeteer (Web Scraping)"]
+    C -- browser_flow --> D["Puppeteer (Web Scraping)"]
     C -- fetch_api --> E["REST Client"]
-    C -- google_search --> F["Google Custom Search API"]
-    C -- smart_command --> G["Language Detection & Translation"]
+    C -- multi_search --> F["Google Custom Search API"]
+    C -- parse_document --> G["Document Parser (PDF/DOCX)"]
     C -- download_file --> H["File System (Downloads)"]
     D --> I["Web Content"]
     E --> J["External APIs"]
@@ -179,24 +176,13 @@ To integrate web-curl as an MCP server, add the following configuration to your 
       ],
       "disabled": false,
       "alwaysAllow": [
-        "browser_navigate",
-        "browser_snapshot",
-        "browser_action",
-        "browser_tabs",
-        "batch_navigate",
-        "multi_search",
-        "browser_network_requests",
-        "browser_console_messages",
+        "browser_flow",
         "browser_configure",
-        "browser_links",
-        "take_screenshot",
-        "parse_document",
         "browser_close",
-        "google_search",
+        "multi_search",
         "fetch_api",
-        "smart_command",
         "download_file",
-        "fetch_webpage"
+        "parse_document"
       ],
       "env": {
         "APIKEY_GOOGLE_SEARCH": "YOUR_GOOGLE_API_KEY",
@@ -319,24 +305,16 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 
 #### Exposed Tools (v1.4.2)
 
-- **browser_flow**: One-call workflow (optional navigate → optional actions → return snapshot/screenshot/links/console/network). Use this to avoid calling many tools.
-- **browser_navigate**: Open a URL in the active tab (includes network-idle wait + short stabilization).
-- **browser_snapshot**: TEXT snapshot (tree by default, or `mode: "html"` slices with `startIndex`/`endIndex`).
-- **browser_action**: Interact with the page (click/type/scroll/hover/press_key/waitForSelector). Best used with `ref:` from snapshot.
-- **browser_tabs**: List, create, close, or select tabs (max 10).
-- **batch_navigate**: Open many URLs (each in a new tab) and return tab indexes.
-- **multi_search**: Run multiple Google searches in parallel.
-- **browser_network_requests**: Recent network requests.
-- **browser_console_messages**: Recent console logs/warnings/errors.
+Only the tools below are exposed via `list_tools` to reduce tool-chaining in agent clients.
+
+- **browser_flow**: One-call browser workflow (optional navigate → optional actions → return ONE result).
 - **browser_configure**: Set proxy/user-agent/viewport (session persistence is always on via `user_data/`).
-- **browser_links**: Extract all valid links from the page.
-- **take_screenshot**: PNG screenshot to disk. Default `fullPage: true` (set `false` for faster viewport-only).
-- **parse_document**: Extract text from PDF/DOCX URLs.
-- **browser_close**: Close browser and tabs.
-- **google_search**: Google Custom Search (single query).
+- **browser_close**: Close browser and tabs (also auto-closes after 15 minutes of inactivity).
+
+- **multi_search**: Run multiple Google searches in parallel (the only exposed search entrypoint).
 - **fetch_api**: REST API request with response truncation (`limit`).
-- **smart_command**: Natural-language search command (auto language detect + translate + query enrichment).
 - **download_file**: Download a file from a URL.
+- **parse_document**: Extract text from PDF/DOCX URLs.
 
 #### Running as MCP Server
 
@@ -350,16 +328,19 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
 
 ### 🚦 HTML Slicing Example (Recommended for Large Pages)
 
-Use [`browser_snapshot`](src/index.ts:469) with `mode: "html"` when you need raw HTML but want to keep the response small.
+Use [`browser_flow`](src/index.ts:395) with `result: { type: "snapshot", mode: "html" }` when you need raw HTML but want to keep the response small.
 
 Client request for first slice:
 ```json
 {
-  "name": "browser_snapshot",
+  "name": "browser_flow",
   "arguments": {
-    "mode": "html",
-    "startIndex": 0,
-    "endIndex": 20000
+    "result": {
+      "type": "snapshot",
+      "mode": "html",
+      "startIndex": 0,
+      "endIndex": 20000
+    }
   }
 }
 ```
@@ -383,7 +364,7 @@ Response (example):
 
 - **Session Persistence**: Always enabled. Logins and cookies are automatically reused across restarts.
 - **Timeout**: Set navigation and API request timeouts.
-- **Environment Variables**: Used for Google Search API integration.
+- **Environment Variables**: Used for Google Search API integration (used by `multi_search`).
 
 ---
 

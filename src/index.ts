@@ -218,7 +218,14 @@ class WebCurlServer {
       if (fs.existsSync(this.PID_FILE)) {
         const pid = parseInt(fs.readFileSync(this.PID_FILE, 'utf8'));
         if (!isNaN(pid)) {
-          try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch (e) {}
+          // On Windows, use taskkill to terminate the full process tree.
+          if (process.platform === 'win32') {
+            try {
+              require('child_process').execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+            } catch (e) {}
+          } else {
+            try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch (e) {}
+          }
         }
         fs.unlinkSync(this.PID_FILE);
       }
@@ -277,12 +284,14 @@ class WebCurlServer {
   }
 
   private async getPage(index?: number): Promise<Page> {
-    const browser = await this.getBrowser();
+    await this.getBrowser();
     const idx = index !== undefined ? index : this.activePageIndex;
 
     if (!this.pages[idx]) {
+      // If the requested tab index doesn't exist (e.g., first use or stale index),
+      // create a new page and make it the active tab.
       const page = await this.createNewPage();
-      this.pages[idx] = page;
+      this.activePageIndex = this.pages.length - 1;
       return page;
     }
     return this.pages[idx];
@@ -390,22 +399,12 @@ class WebCurlServer {
   private setupToolHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
-        {
-          name: 'browser_navigate',
-          description:
-            'Open a URL in the active tab. Use this before snapshot/action/screenshot. Waits for domcontentloaded, then tries network-idle (up to 30s) + a short stabilization delay (useful for SPAs).',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              url: { type: 'string', description: 'The absolute URL to navigate to (e.g., https://example.com)' }
-            },
-            required: ['url']
-          }
-        },
+        // Expose only a small, agent-friendly surface to reduce tool-chaining.
+        // Lower-level tools still exist in CallToolRequestSchema for manual/debug usage.
         {
           name: 'browser_flow',
           description:
-            'One-call workflow to reduce tool-chaining: optional navigate → optional wait/stabilize → optional actions → return ONE result (snapshot OR screenshot OR links OR console OR network). Use when the user wants multiple steps like “open this then screenshot”.',
+            'One-call browser workflow: (optional) open URL → (optional) actions → return ONE result (snapshot/screenshot/links/console/network). Use this for almost all browser tasks to avoid many steps.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -427,7 +426,7 @@ class WebCurlServer {
                   type: 'object',
                   properties: {
                     action: { type: 'string', enum: ['click', 'type', 'scroll', 'press_key', 'hover', 'waitForSelector'], description: 'Interaction type.' },
-                    selector: { type: 'string', description: 'CSS selector or ref from browser_snapshot (e.g., ref:abcd).' },
+                    selector: { type: 'string', description: 'CSS selector or ref from snapshot (e.g., ref:abcd).' },
                     text: { type: 'string', description: 'Text to type (for action="type").' },
                     direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction (for action="scroll").' },
                     key: { type: 'string', description: 'Keyboard key (for action="press_key").' },
@@ -455,76 +454,6 @@ class WebCurlServer {
           }
         },
         {
-          name: 'batch_navigate',
-          description: 'Open multiple URLs, each in its own new tab (sequential). Use when you need many pages ready to inspect. Returns a list with tab indexes.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              urls: { type: 'array', items: { type: 'string' }, description: 'An array of absolute URLs to open.' }
-            },
-            required: ['urls']
-          }
-        },
-        {
-          name: 'browser_snapshot',
-          description: 'Return a TEXT snapshot of the current page (NOT an image). Default mode "tree" returns a compact accessibility tree with [ref:...] you can click/type into. Use mode "html" to get raw HTML slices (20KB default) with startIndex/endIndex.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              mode: { type: 'string', enum: ['tree', 'html'], description: 'Snapshot mode: "tree" (accessibility tree) or "html" (raw HTML slice). Defaults to "tree".' },
-              startIndex: { type: 'number', description: 'Start index for HTML slicing (mode="html"). Defaults to 0.' },
-              endIndex: { type: 'number', description: 'End index for HTML slicing (mode="html"). Defaults to startIndex + 20000 (clamped to HTML length).' }
-            }
-          }
-        },
-        {
-          name: 'browser_action',
-          description: 'Interact with the current page (click/type/scroll/hover/press_key/waitForSelector). For best reliability, use ref IDs from browser_snapshot (tree) like "ref:abcd".',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              action: { type: 'string', enum: ['click', 'type', 'scroll', 'press_key', 'hover', 'waitForSelector'], description: 'The type of interaction to perform.' },
-              selector: { type: 'string', description: 'The target element. Can be a CSS selector or a reference ID from a snapshot (e.g., \"ref:e12\"). Required for click, type, hover, and waitForSelector.' },
-              text: { type: 'string', description: 'The text to type into the element. Required for the \"type\" action.' },
-              direction: { type: 'string', enum: ['up', 'down'], description: 'The direction to scroll. Required for the \"scroll\" action.' },
-              key: { type: 'string', description: 'The keyboard key to press (e.g., \"Enter\", \"ArrowLeft\"). Required for the \"press_key\" action.' },
-              timeout: { type: 'number', description: 'Maximum time to wait for the element to appear, in milliseconds (default: 30000).' }
-            },
-            required: ['action']
-          }
-        },
-        {
-          name: 'take_screenshot',
-          description: 'Capture a PNG screenshot and return the local file path. Default fullPage=true (can be slow on very long pages); set fullPage=false for a fast viewport-only screenshot.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              filename: { type: 'string', description: 'Optional custom filename for the screenshot (e.g., page.png).' },
-              fullPage: { type: 'boolean', description: 'true=full page, false=viewport only. Default true.' },
-              destinationFolder: { type: 'string', description: 'Optional output directory (relative to project root or absolute). Directory will be created if missing.' }
-            }
-          }
-        },
-        {
-          name: 'browser_network_requests',
-          description: 'Retrieves a log of network requests (XHR/Fetch) made by the current page since it was loaded. Useful for inspecting API calls or data flowing behind the scenes.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              includeStatic: {
-                type: 'boolean',
-                description: 'Whether to include static resources like images, fonts, and stylesheets. Defaults to false (only XHR/Fetch).',
-                default: false
-              }
-            }
-          }
-        },
-        {
-          name: 'browser_console_messages',
-          description: 'Retrieves recent console logs, warnings, and errors emitted by the current page. Useful for debugging page behavior or capturing data printed to the console.',
-          inputSchema: { type: 'object', properties: {} }
-        },
-        {
           name: 'browser_configure',
           description: 'Set browser-wide settings (proxy, user-agent, viewport). Sessions are always persisted automatically using the local user_data/ profile.',
           inputSchema: {
@@ -540,23 +469,6 @@ class WebCurlServer {
                 }
               }
             }
-          }
-        },
-        {
-          name: 'browser_links',
-          description: 'Extracts all valid HTTP/HTTPS links from the current page, returning their visible text and absolute URLs.',
-          inputSchema: { type: 'object', properties: {} }
-        },
-        {
-          name: 'browser_tabs',
-          description: 'Manages multiple browser tabs. You can list open tabs, create new ones, close specific tabs, or switch between them. The browser supports up to 10 concurrent tabs with automatic LRU rotation.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              action: { type: 'string', enum: ['list', 'new', 'close', 'select'], description: 'The tab management action to perform.' },
-              index: { type: 'number', description: 'The index of the tab to select or close. If omitted for \"close\", the active tab is closed.' }
-            },
-            required: ['action']
           }
         },
         {
@@ -586,35 +498,6 @@ class WebCurlServer {
           }
         },
         {
-          name: 'google_search',
-          description: 'Performs a web search using the Google Custom Search API. Supports advanced filtering by language, region, site, and date range.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: 'The search query string.' },
-              num: { type: 'number', description: 'Number of search results to return (1-10).' },
-              start: { type: 'number', description: 'The index of the first result to return.' },
-              language: { type: 'string', description: 'Language code (e.g., \"en\", \"id\").' },
-              region: { type: 'string', description: 'Country code (e.g., \"US\", \"ID\").' },
-              site: { type: 'string', description: 'Restrict search to a specific domain (e.g., \"wikipedia.org\").' },
-              dateRestrict: { type: 'string', description: 'Restrict results by date (e.g., \"d1\" for past day, \"w1\" for past week, \"m1\" for past month, \"y1\" for past year).' }
-            },
-            required: ['query']
-          }
-        },
-        {
-          name: 'smart_command',
-          description: 'Processes a natural language command by detecting its language, translating it to English if necessary, enriching the query, and performing a Google search. Ideal for complex or non-English research intents.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              command: { type: 'string', description: 'The natural language research command or question.' },
-              debug: { type: 'boolean', description: 'Whether to return detailed processing steps (language, enriched query).' }
-            },
-            required: ['command']
-          }
-        },
-        {
           name: 'download_file',
           description: 'Downloads a file from a URL directly to the local file system. Ensures the destination folder exists and handles streaming for large files.',
           inputSchema: {
@@ -640,7 +523,7 @@ class WebCurlServer {
         },
         {
           name: 'browser_close',
-          description: 'Immediately terminates the browser process and closes all open tabs. Note: The browser also closes automatically after 1 minute of inactivity.',
+          description: 'Immediately terminates the browser process and closes all open tabs. Note: the browser also auto-closes after 15 minutes of inactivity.',
           inputSchema: { type: 'object', properties: {} }
         }
       ]
