@@ -1,0 +1,8 @@
+node_modules/
+build/
+.env
+logs/
+screenshots/
+user_data/
+temp_test_downloads/
+.tmp/

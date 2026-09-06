@@ -20,8 +20,13 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
+import mammoth from 'mammoth';
 import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
+import { runExtract } from './extract.js';
+import { runCrawl } from './crawl.js';
+import { runResearch } from './research.js';
+import { runAgent } from './agent.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -492,6 +497,8 @@ class WebCurlServer {
               method: { type: 'string', description: 'HTTP method (GET, POST, PUT, DELETE, etc.).' },
               headers: { type: 'object', description: 'Optional HTTP headers.' },
               body: { type: 'string', description: 'Optional request body.' },
+              timeout: { type: 'number', description: 'Request timeout in milliseconds (default 60000).' },
+              redirect: { type: 'string', enum: ['follow', 'error', 'manual'], description: 'Redirect handling mode (default follow).' },
               limit: { type: 'number', description: 'Maximum number of characters to return from the response body.' }
             },
             required: ['url', 'method', 'limit']
@@ -519,6 +526,104 @@ class WebCurlServer {
               queries: { type: 'array', items: { type: 'string' }, description: 'An array of search query strings.' }
             },
             required: ['queries']
+          }
+        },
+        {
+          name: 'research',
+          description:
+            'Research pipeline: decomposes a question into sub-queries, runs them in parallel via Google search, dedupes results, and produces a synthesized markdown report where every source has a numbered citation. Use for multi-faceted questions.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'The research question.' },
+              maxSubQueries: { type: 'number', description: 'Max sub-queries to decompose into (default 4).' },
+              maxResultsPerQuery: { type: 'number', description: 'Results to keep per sub-query (default 5).' },
+              language: { type: 'string', description: 'Optional language code, e.g. id or en.' },
+              site: { type: 'string', description: 'Optional site restriction (e.g. wikipedia.org).' },
+              dateRestrict: { type: 'string', description: 'Optional freshness filter, e.g. d1, m6, y1.' }
+            },
+            required: ['query']
+          }
+        },
+        {
+          name: 'extract',
+          description:
+            'Extract structured content from an HTML page: CSS-selector fields, tables, meta tags, JSON-LD blocks, Readability main content, and detected schema types (og:type / JSON-LD @type).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', description: 'The page URL.' },
+              selectors: {
+                type: 'array',
+                description: 'Optional CSS selector fields to extract.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Field name in the output.' },
+                    css: { type: 'string', description: 'CSS selector, e.g. h1, .price, #author.' },
+                    attr: { type: 'string', description: 'Optional attribute to read (e.g. href, src, content). Defaults to text content.' },
+                    all: { type: 'boolean', description: 'If true, return all matches as an array (default false).' }
+                  },
+                  required: ['name', 'css']
+                }
+              },
+              includeTables: { type: 'boolean', description: 'Extract tables as row arrays (default true).' },
+              includeJsonLd: { type: 'boolean', description: 'Parse JSON-LD blocks (default true).' },
+              includeMeta: { type: 'boolean', description: 'Collect meta tags (default true).' },
+              includeMainContent: { type: 'boolean', description: 'Extract main text via Readability (default true).' },
+              maxTextChars: { type: 'number', description: 'Cap for main content characters (default 20000).' }
+            },
+            required: ['url']
+          }
+        },
+        {
+          name: 'crawl',
+          description:
+            'Crawl a site: BFS or DFS traversal, sitemap parsing, or a one-page link map. Supports include/exclude regex filters, same-domain restriction, max pages, depth, and a politeness delay.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              startUrl: { type: 'string', description: 'The seed URL (or sitemap URL for strategy=sitemap).' },
+              strategy: { type: 'string', enum: ['bfs', 'dfs', 'sitemap', 'map'], description: 'Traversal strategy (default bfs).' },
+              maxPages: { type: 'number', description: 'Max pages to visit (default 20).' },
+              include: { type: 'array', items: { type: 'string' }, description: 'Regex patterns; if set, only URLs matching at least one are kept.' },
+              exclude: { type: 'array', items: { type: 'string' }, description: 'Regex patterns; URLs matching any are dropped.' },
+              sameDomain: { type: 'boolean', description: 'Restrict to the start host (default true).' },
+              delayMs: { type: 'number', description: 'Politeness delay between requests (default 250).' },
+              timeoutMs: { type: 'number', description: 'Per-page fetch timeout (default 30000).' },
+              maxDepth: { type: 'number', description: 'Max link depth (default 3).' }
+            },
+            required: ['startUrl']
+          }
+        },
+        {
+          name: 'agent',
+          description:
+            'Structured data collection: given explicit URLs (or a search query to discover them) plus a field schema (CSS selectors and/or JSON-LD paths), reads each page and returns flat records. Ideal for building tables of data from many pages.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              urls: { type: 'array', items: { type: 'string' }, description: 'Explicit URLs to process (optional if query given).' },
+              query: { type: 'string', description: 'Search query used to discover URLs when urls is empty.' },
+              maxUrls: { type: 'number', description: 'Max URLs to process when using query (default 5).' },
+              fields: {
+                type: 'array',
+                description: 'The output schema: one entry per field.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Field name.' },
+                    selector: { type: 'string', description: 'CSS selector to read the value.' },
+                    attr: { type: 'string', description: 'Optional attribute instead of text.' },
+                    jsonLdPath: { type: 'string', description: 'Optional dotted path into the JSON-LD graph, e.g. 0.offers.price.' },
+                    type: { type: 'string', enum: ['text', 'number', 'boolean', 'url'], description: 'Value type coercion (default text).' },
+                    required: { type: 'boolean', description: 'Fail the record if the field is missing (default false).' }
+                  },
+                  required: ['name']
+                }
+              }
+            },
+            required: ['fields']
           }
         },
         {
@@ -626,7 +731,14 @@ class WebCurlServer {
           }
         }
 
-        const page = await this.getPage();
+        // Only browser-specific low-level tools need an active Page.
+        // Non-browser tools (API, search, document, download) must not launch Chromium.
+        // browser_flow and batch_navigate manage their own page lifecycle internally.
+        const pageTools = new Set([
+          'browser_navigate', 'browser_snapshot', 'browser_action', 'take_screenshot',
+          'browser_network_requests', 'browser_console_messages', 'browser_links'
+        ]);
+        const page: Page = pageTools.has(toolName) ? await this.getPage() : (null as any);
         if (toolName === 'browser_navigate') {
           const { url } = args as any;
           this.networkRequests.set(page, []);
@@ -868,8 +980,27 @@ class WebCurlServer {
         } else if (toolName === 'parse_document') {
           const { url } = args as any;
           const res = await fetch(url);
-          const data = await pdf(Buffer.from(await res.arrayBuffer()));
-          return { content: [{ type: 'text', text: data.text }] };
+          if (!res.ok) throw new Error(`Failed to fetch document: ${res.status} ${res.statusText}`);
+          const buffer = Buffer.from(await res.arrayBuffer());
+          const contentType = (res.headers.get('content-type') || '').toLowerCase();
+          const pathname = new URL(url).pathname.toLowerCase();
+
+          if (contentType.includes('pdf') || pathname.endsWith('.pdf')) {
+            const parser = new PDFParse({ data: buffer });
+            try {
+              const data = await parser.getText();
+              return { content: [{ type: 'text', text: data.text }] };
+            } finally {
+              await parser.destroy();
+            }
+          }
+
+          if (contentType.includes('wordprocessingml') || pathname.endsWith('.docx')) {
+            const data = await mammoth.extractRawText({ buffer });
+            return { content: [{ type: 'text', text: data.value }] };
+          }
+
+          throw new Error('Unsupported document type. Only PDF and DOCX are supported.');
         } else if (toolName === 'fetch_api') {
           if (!isValidFetchApiArgs(args)) throw new Error('Invalid args');
           return { content: [{ type: 'text', text: JSON.stringify(await fetchApi(args as any), null, 2) }] };
@@ -957,8 +1088,20 @@ class WebCurlServer {
           
           const fileStream = fs.createWriteStream(filePath);
           await pipeline(Readable.fromWeb(response.body as any), fileStream);
-          
+
           return { content: [{ type: 'text', text: `File downloaded to: ${filePath}` }] };
+        } else if (toolName === 'research') {
+          const result = await runResearch(args as any);
+          return { content: [{ type: 'text', text: result.report }] };
+        } else if (toolName === 'extract') {
+          const result = await runExtract(args as any);
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } else if (toolName === 'crawl') {
+          const result = await runCrawl(args as any);
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } else if (toolName === 'agent') {
+          const result = await runAgent(args as any);
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         }
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
       } catch (error: any) {

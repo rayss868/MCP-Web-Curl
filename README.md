@@ -101,6 +101,12 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
     - Console Logs (`browser_console_messages`)
 - **Parallel Search**:
     - `multi_search`: Run multiple Google searches at once (only exposed search tool).
+- **Research Pipeline**:
+    - `research`: Decompose a question into sub-queries, run them in parallel, dedupe, and synthesize a markdown report with numbered citations.
+    - `agent`: Collect structured data across pages using a field schema (CSS selectors and/or JSON-LD paths).
+- **Structured Extraction**:
+    - `extract`: CSS-selector fields, tables, meta tags, JSON-LD blocks, Readability main content, and schema-type detection.
+    - `crawl`: BFS/DFS traversal, sitemap parsing (incl. index files), or one-page link map, with include/exclude regex, same-domain restriction, and politeness delay.
 - **Intelligent Resource Management**:
     - **Idle Auto-Close**: Browser automatically shuts down after 15 minutes of inactivity to save RAM/CPU.
     - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
@@ -148,10 +154,14 @@ graph TD
     C -- multi_search --> F["Google Custom Search API"]
     C -- parse_document --> G["Document Parser (PDF/DOCX)"]
     C -- download_file --> H["File System (Downloads)"]
-    D --> I["Web Content"]
-    E --> J["External APIs"]
-    F --> K["Google Search Results"]
-    H --> L["Local Storage"]
+    C -- research --> F
+    C -- agent --> F
+    C -- extract --> I["HTML Parser (jsdom + Readability)"]
+    C -- crawl --> I
+    D --> J["Web Content"]
+    E --> K["External APIs"]
+    F --> L["Google Search Results"]
+    H --> M["Local Storage"]
 ```
 *   **CLI & MCP Server**: [`src/index.ts`](src/index.ts)
     Implements both the CLI entry point and the MCP server.
@@ -182,7 +192,11 @@ To integrate web-curl as an MCP server, add the following configuration to your 
         "multi_search",
         "fetch_api",
         "download_file",
-        "parse_document"
+        "parse_document",
+        "research",
+        "extract",
+        "crawl",
+        "agent"
       ],
       "env": {
         "APIKEY_GOOGLE_SEARCH": "YOUR_GOOGLE_API_KEY",
@@ -315,6 +329,10 @@ Only the tools below are exposed via `list_tools` to reduce tool-chaining in age
 - **fetch_api**: REST API request with response truncation (`limit`).
 - **download_file**: Download a file from a URL.
 - **parse_document**: Extract text from PDF/DOCX URLs.
+- **research**: Research pipeline — question decomposition → parallel sub-search → dedup → synthesized markdown report with numbered citations.
+- **extract**: Structured page extraction — CSS selectors, tables, meta tags, JSON-LD, Readability main content, schema-type detection.
+- **crawl**: Site traversal — BFS/DFS, sitemap (incl. index files), or one-page map, with include/exclude regex and politeness delay.
+- **agent**: Structured data collection across pages — field schema with CSS selectors and/or JSON-LD paths, type coercion, required-field validation.
 
 #### Running as MCP Server
 
