@@ -69,6 +69,7 @@ If your platform supports it, you can also [download and play demo/demo_1.mp4](d
 - [Troubleshooting](#troubleshooting)
 - [Tips & Best Practices](#tips--best-practices)
 - [Contributing & Issues](#contributing--issues)
+- [Academic Publication](#academic-publication)
 - [License & Attribution](#license--attribution)
 
 ---
@@ -465,6 +466,20 @@ Note: Session persistence is always enabled. Cookies and login sessions are auto
 
 Contributions are welcome! If you want to contribute, fork this repository and submit a pull request.  
 If you find any issues or have suggestions, please open an issue on the repository page.
+
+---
+
+<a name="academic-publication"></a>
+## 📄 Academic Publication
+
+This project is the subject of a peer-reviewed journal article:
+
+> Saleh, R. Z., & Lubis, M. (2026). *Design and Implementation of MCP-Web-Curl: A Model Context Protocol Server for Web and API Access in Agentic Coding Assistants.* JURNAL TEKNIK INFORMATIKA, 19(1), 122–134.
+
+- **DOI**: [10.15408/jti.v19i1.49625](https://doi.org/10.15408/jti.v19i1.49625)
+- **Article**: [journal.uinjkt.ac.id/index.php/ti/article/view/49625](https://journal.uinjkt.ac.id/index.php/ti/article/view/49625)
+- **PDF**: [Download](https://journal.uinjkt.ac.id/index.php/ti/article/download/49625/19031)
+- **License**: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0)
 
 ---
 
