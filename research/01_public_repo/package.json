@@ -1,0 +1,47 @@
+{
+  "name": "web-curl",
+  "version": "1.0.6",
+  "description": "A universal CLI and MCP server tool for fetching, extracting, and processing web and API content. Supports resource blocking, authentication, Google Custom Search, and robust automation.",
+  "author": "Rayss",
+  "license": "MIT",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "start": "node build/index.js",
+    "lint": "npx eslint ./src --ext .ts",
+    "metrics": "tsx scripts/run_metrics.ts"
+  },
+  "keywords": [
+    "web-scraping",
+    "cli",
+    "mcp",
+    "puppeteer",
+    "automation",
+    "api",
+    "content-extraction"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.4",
+    "@mozilla/readability": "^0.4.4",
+    "@types/jsdom": "^21.1.7",
+    "@types/pdf-parse": "^1.1.5",
+    "dotenv": "^17.2.1",
+    "franc-min": "^6.2.0",
+    "jsdom": "^26.1.0",
+    "pdf-parse": "^2.4.5",
+    "puppeteer": "^24.8.2",
+    "translate": "^1.4.0",
+    "ws": "^8.19.0",
+    "yargs": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "@types/ws": "^8.18.1",
+    "@types/yargs": "^17.0.33",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

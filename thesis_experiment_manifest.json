@@ -1,0 +1,27 @@
+﻿{
+    "generated_at":  "2026-08-09T18:11:21.9692213+07:00",
+    "thesis_release":  "1.4.2",
+    "node":  "v22.15.1",
+    "npm":  "10.9.2",
+    "typescript":  "Version 5.8.3",
+    "puppeteer":  "24.10.0",
+    "chromium":  "137.0.7151.55",
+    "os":  "Microsoft Windows 11 Home Single Language",
+    "cpu":  "12th Gen Intel(R) Core(TM) i5-12450H",
+    "ram_gb":  15.71,
+    "logical_processors":  12,
+    "primary_dataset_runs":  441,
+    "resource_benchmark_operations":  900,
+    "hashes":  {
+                   "thesis_tests\\run_bab5_experiments.mjs":  "7013581e123d0e698876024d8279aef80fd639f818c73fe8ec0c56e0cb6af972",
+                   "thesis_tests\\resource_benchmark.mjs":  "b54fade174aaa9e4b323c170673fbd325a821d6659fd165d5c83144e0787f045",
+                   "src\\rest-client.ts":  "1bfdd56e79181377274386a835778a7043659536777b7571796d57ccff31822f",
+                   "thesis_tests\\results\\resource_benchmark.json":  "12eea1784ef4c106db0d9c1ad2b83953c346532faaa200649754f4d057431213",
+                   "package.json":  "9467a2265a4eb69de756733b4ac60b9f0a5d9c2f0ab7fc791e458c23e829a831",
+                   "build\\index.js":  "46c94887efbd48d207ecf3070fd102f0adfc160b3a9e44fdc274208b5ca48069",
+                   "package-lock.json":  "d74fc2a1c2e8bd12bd4a6afa21a10cd66eae779586c51a854e9869edfa22e533",
+                   "scripts\\run_metrics.ts":  "b5bcc68c2e8b0d36db76b6d844aa6fc780d854c4e1ad51fb788ad7a7ad3b89fa",
+                   "src\\index.ts":  "8f664a5f4cd23c41cc71d2eab088023d0e391b69511d6abde846dd920b0301a1",
+                   "thesis_tests\\results\\bab5_runs.csv":  "cb1d85a5f2155f9bd093059fe2cc622e017a0dc9bd1cc9fed3b7e82038ec2e0c"
+               }
+}

@@ -1,0 +1,11 @@
+[2025-08-15T02:02:51.248Z] Error during fetch_webpage "https://www.coingecko.com/id": TimeoutError: Navigation timeout of 30000 ms exceeded
+TimeoutError: Navigation timeout of 30000 ms exceeded
+    at new Deferred (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/node_modules/puppeteer-core/lib/esm/puppeteer/util/Deferred.js:57:34)
+    at Deferred.create (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/node_modules/puppeteer-core/lib/esm/puppeteer/util/Deferred.js:18:16)
+    at new LifecycleWatcher (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/LifecycleWatcher.js:66:46)
+    at CdpFrame.goto (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/Frame.js:145:29)
+    at CdpFrame.<anonymous> (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/node_modules/puppeteer-core/lib/esm/puppeteer/util/decorators.js:101:27)
+    at CdpPage.goto (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/node_modules/puppeteer-core/lib/esm/puppeteer/api/Page.js:570:43)
+    at WebCurlServer.fetchWebpage (file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/build/index.js:589:28)
+    at async file:///d:/All_project/own/AI_Coder/Native%20Tools/curl/build/index.js:221:36
+

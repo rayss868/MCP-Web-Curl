@@ -1,0 +1,192 @@
+{
+  "F0_TOOL_DISCOVERY::mcp": {
+    "n": 1,
+    "success": 1,
+    "success_rate": 100,
+    "mean_latency_ms": 0,
+    "median_latency_ms": 0,
+    "p95_latency_ms": 0,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 112
+  },
+  "S2_BROWSER_SNAPSHOT::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 16.391,
+    "median_latency_ms": 16.858,
+    "p95_latency_ms": 20.514,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 165.5
+  },
+  "S3_HTML_SLICING::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 18.646,
+    "median_latency_ms": 17.861,
+    "p95_latency_ms": 26.806,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 631
+  },
+  "S4_API_NORMAL::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 2.815,
+    "median_latency_ms": 2.161,
+    "p95_latency_ms": 4.393,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 471.7
+  },
+  "S6_FILE_DOWNLOAD::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 3.548,
+    "median_latency_ms": 3.356,
+    "p95_latency_ms": 4.578,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 103.7
+  },
+  "S7_PDF_PARSE::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 7.468,
+    "median_latency_ms": 4.698,
+    "p95_latency_ms": 6.2,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 130
+  },
+  "S8_DOCX_PARSE::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 46.073,
+    "median_latency_ms": 40.224,
+    "p95_latency_ms": 78.628,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 153
+  },
+  "S9_PERSISTENT_SESSION::mcp": {
+    "n": 20,
+    "success": 20,
+    "success_rate": 100,
+    "mean_latency_ms": 824.686,
+    "median_latency_ms": 797.014,
+    "p95_latency_ms": 1059.96,
+    "mean_tool_calls": 3,
+    "mean_output_chars": 145
+  },
+  "S10_TAB_LIFECYCLE::mcp": {
+    "n": 20,
+    "success": 20,
+    "success_rate": 100,
+    "mean_latency_ms": 1241.991,
+    "median_latency_ms": 1220.618,
+    "p95_latency_ms": 1433.431,
+    "mean_tool_calls": 13,
+    "mean_output_chars": 1358.5
+  },
+  "R1_FORCED_TIMEOUT::mcp": {
+    "n": 20,
+    "success": 20,
+    "success_rate": 100,
+    "mean_latency_ms": 62.229,
+    "median_latency_ms": 62.686,
+    "p95_latency_ms": 65.991,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 43
+  },
+  "R2_CONNECTION_REFUSED::mcp": {
+    "n": 20,
+    "success": 20,
+    "success_rate": 100,
+    "mean_latency_ms": 1.468,
+    "median_latency_ms": 1.238,
+    "p95_latency_ms": 1.696,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 19
+  },
+  "R3_INVALID_DOCUMENT::mcp": {
+    "n": 20,
+    "success": 20,
+    "success_rate": 100,
+    "mean_latency_ms": 2.192,
+    "median_latency_ms": 2.159,
+    "p95_latency_ms": 2.752,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 66
+  },
+  "R4_INVALID_TAB::mcp": {
+    "n": 20,
+    "success": 20,
+    "success_rate": 100,
+    "mean_latency_ms": 0.355,
+    "median_latency_ms": 0.321,
+    "p95_latency_ms": 0.561,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 23
+  },
+  "PAIR_OUTPUT::baseline_full": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 2.156,
+    "median_latency_ms": 1.673,
+    "p95_latency_ms": 4.76,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 12452.77
+  },
+  "PAIR_OUTPUT::mcp_limited": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 1.819,
+    "median_latency_ms": 1.504,
+    "p95_latency_ms": 5.491,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 906.87
+  },
+  "PAIR_BROWSER_ORCHESTRATION::baseline": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 2564.213,
+    "median_latency_ms": 2560.065,
+    "p95_latency_ms": 2592.658,
+    "mean_tool_calls": 3,
+    "mean_output_chars": 167.6
+  },
+  "PAIR_BROWSER_ORCHESTRATION::mcp": {
+    "n": 30,
+    "success": 30,
+    "success_rate": 100,
+    "mean_latency_ms": 2561.702,
+    "median_latency_ms": 2558.675,
+    "p95_latency_ms": 2582.596,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 167.57
+  },
+  "PAIR_SEARCH::baseline": {
+    "n": 10,
+    "success": 10,
+    "success_rate": 100,
+    "mean_latency_ms": 813.912,
+    "median_latency_ms": 788.938,
+    "p95_latency_ms": 1096.114,
+    "mean_tool_calls": 2,
+    "mean_output_chars": 1871
+  },
+  "PAIR_SEARCH::mcp": {
+    "n": 10,
+    "success": 10,
+    "success_rate": 100,
+    "mean_latency_ms": 463.531,
+    "median_latency_ms": 518.183,
+    "p95_latency_ms": 1101.957,
+    "mean_tool_calls": 1,
+    "mean_output_chars": 7518
+  }
+}

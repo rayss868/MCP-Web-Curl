@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Web-curl Bridge",
+  "version": "1.0.0",
+  "description": "Bridge for Web-curl MCP Server to enable advanced research and automation.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "debugger",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:9223/*",
+    "ws://localhost:9223/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

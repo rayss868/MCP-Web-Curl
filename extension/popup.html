@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 250px; padding: 15px; font-family: sans-serif; }
+    .status { margin-bottom: 15px; padding: 10px; border-radius: 4px; }
+    .connected { background: #e6fffa; color: #2c7a7b; border: 1px solid #81e6d9; }
+    .disconnected { background: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
+    button { 
+      width: 100%; padding: 10px; background: #3182ce; color: white; 
+      border: none; border-radius: 4px; cursor: pointer; 
+    }
+    button:hover { background: #2b6cb0; }
+    code { background: #edf2f7; padding: 2px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h3>Web-curl Bridge</h3>
+  <div id="status" class="status disconnected">
+    Status: <b>Disconnected</b>
+  </div>
+  <p>To connect with AI, ensure Chrome is running with:</p>
+  <code>--remote-debugging-port=9222</code>
+  <br><br>
+  <button id="copyCmd">Copy Debug Command</button>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

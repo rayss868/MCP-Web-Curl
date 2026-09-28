@@ -27,6 +27,7 @@ import { runExtract } from './extract.js';
 import { runCrawl } from './crawl.js';
 import { runResearch } from './research.js';
 import { runAgent } from './agent.js';
+import { googleSearch } from './search.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -430,7 +431,7 @@ class WebCurlServer {
         },
         {
           name: 'multi_search',
-          description: 'Executes multiple Google search queries in parallel. Returns a combined list of results for each query. Highly efficient for broad research across multiple related topics.',
+          description: 'Executes multiple search queries in parallel using the configured External API. Returns a combined list of results for each query.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -688,22 +689,10 @@ class WebCurlServer {
           return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
         } else if (toolName === 'multi_search') {
           const { queries } = args as any;
-          const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
-          const cx = process.env.CX_GOOGLE_SEARCH;
-          if (!apiKey || !cx) throw new Error('Google Search API keys not configured');
-
-          const searchResults = await Promise.all(queries.map(async (query: string) => {
-            const url = new URL('https://www.googleapis.com/customsearch/v1');
-            url.searchParams.set('key', apiKey);
-            url.searchParams.set('cx', cx);
-            url.searchParams.set('q', query);
-            const response = await fetch(url.toString());
-            const data = await response.json() as any;
-            return {
-              query,
-              results: (data.items || []).map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet }))
-            };
-          }));
+          const searchResults = await Promise.all(queries.map(async (query: string) => ({
+            query,
+            results: await googleSearch(query),
+          })));
           return { content: [{ type: 'text', text: JSON.stringify(searchResults, null, 2) }] };
         } else if (toolName === 'browser_snapshot') {
           const { mode = 'tree', startIndex = 0, endIndex } = args as any;
@@ -806,29 +795,7 @@ class WebCurlServer {
           return { content: [{ type: 'text', text: JSON.stringify(await fetchApi(args as any), null, 2) }] };
         } else if (toolName === 'google_search') {
           const { query, num, start, language, region, site, dateRestrict } = args as any;
-          const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
-          const cx = process.env.CX_GOOGLE_SEARCH;
-          if (!apiKey || !cx) throw new Error('Google Search API keys not configured');
-
-          const url = new URL('https://www.googleapis.com/customsearch/v1');
-          url.searchParams.set('key', apiKey);
-          url.searchParams.set('cx', cx);
-          url.searchParams.set('q', query);
-          if (num) url.searchParams.set('num', String(num));
-          if (start) url.searchParams.set('start', String(start));
-          if (language) url.searchParams.set('lr', `lang_${language}`);
-          if (region) url.searchParams.set('cr', `country${region}`);
-          if (site) url.searchParams.set('siteSearch', site);
-          if (dateRestrict) url.searchParams.set('dateRestrict', dateRestrict);
-
-          const response = await fetch(url.toString());
-          if (!response.ok) throw new Error(`Google Search error: ${response.statusText}`);
-          const data = await response.json() as any;
-          const results = (data.items || []).map((item: any) => ({
-            title: item.title,
-            link: item.link,
-            snippet: item.snippet
-          }));
+          const results = await googleSearch(query, { num, start, language, region, site, dateRestrict });
           return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
         } else if (toolName === 'smart_command') {
           const { command } = args as any;
@@ -848,23 +815,7 @@ class WebCurlServer {
             query += ' best tips';
           }
 
-          // Internal call to google_search logic
-          const apiKey = process.env.APIKEY_GOOGLE_SEARCH;
-          const cx = process.env.CX_GOOGLE_SEARCH;
-          if (!apiKey || !cx) throw new Error('Google Search API keys not configured');
-
-          const url = new URL('https://www.googleapis.com/customsearch/v1');
-          url.searchParams.set('key', apiKey);
-          url.searchParams.set('cx', cx);
-          url.searchParams.set('q', query);
-          
-          const response = await fetch(url.toString());
-          const data = await response.json() as any;
-          const results = (data.items || []).map((item: any) => ({
-            title: item.title,
-            link: item.link,
-            snippet: item.snippet
-          }));
+          const results = await googleSearch(query);
 
           return {
             content: [{

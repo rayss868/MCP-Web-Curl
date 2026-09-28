@@ -1,7 +1,3 @@
-### Google Custom Search API
-
-Google Custom Search API is free with usage limits (e.g., 100 queries per day for free, with additional queries requiring payment). For full details on quotas, pricing, and restrictions, see the [official documentation](https://developers.google.com/custom-search/v1/overview).
-
 # Web-curl
 
 <div align="center">
@@ -82,7 +78,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 <a name="overview"></a>
 ## 📝 Overview
 
-**Web-curl** is a powerful tool for fetching and extracting text content from web pages and APIs. Use it as a standalone CLI or as an MCP (Model Context Protocol) server. Web-curl leverages Puppeteer for robust web scraping and supports advanced features such as resource blocking, custom headers, authentication, and Google Custom Search.
+**Web-curl** is a powerful tool for fetching and extracting text content from web pages and APIs. Use it as a standalone CLI or as an MCP (Model Context Protocol) server. Web-curl leverages Puppeteer for robust web scraping and supports advanced features such as resource blocking, custom headers, authentication, and External Search API integration.
 
 ---
 <a name="features"></a>
@@ -99,8 +95,8 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 - **Chrome DevTools Integration (implemented, but hidden from `list_tools`)**:
     - Network Monitoring (`browser_network_requests`)
     - Console Logs (`browser_console_messages`)
-- **Parallel Search**:
-    - `multi_search`: Run multiple Google searches at once (only exposed search tool).
+- **External Search API**:
+    - `multi_search`: Run multiple queries in parallel using one configured external search API.
 - **Intelligent Resource Management**:
     - **Idle Auto-Close**: Browser automatically shuts down after 15 minutes of inactivity to save RAM/CPU.
     - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
@@ -126,7 +122,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
   - Overwrite semantics: by default the implementation will overwrite an existing file with the same name.
 - 🖥️ Usage modes: CLI and MCP server (stdin/stdout transport).
 - 🌐 REST client: `fetch_api` returns JSON/text when appropriate and base64 for binary responses.
-- 🔍 Google Custom Search: requires `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH`.
+- 🔍 Search uses one backend at a time: External API by default, or optional Google Custom Search with `SEARCH_PROVIDER=google`.
 - 🤖 Smart command:
   - Auto language detection (franc-min) and optional translation (dynamic `translate` import).
   - Query enrichment is heuristic-based; results depend on the detected intent.
@@ -144,12 +140,12 @@ graph TD
     B --> C{Tool Handlers}
     C -- extract/crawl/agent --> D["Puppeteer (Web Scraping)"]
     C -- fetch_api --> E["REST Client"]
-    C -- multi_search --> F["Google Custom Search API"]
+    C -- multi_search --> F["External Search API"]
     C -- parse_document --> G["Document Parser (PDF/DOCX)"]
     C -- download_file --> H["File System (Downloads)"]
     D --> I["Web Content"]
     E --> J["External APIs"]
-    F --> K["Google Search Results"]
+    F --> K["External Search Results"]
     H --> L["Local Storage"]
 ```
 *   **CLI & MCP Server**: [`src/index.ts`](src/index.ts)
@@ -187,6 +183,10 @@ To integrate web-curl as an MCP server, add the following configuration to your 
         "parse_document"
       ],
       "env": {
+        "SEARCH_PROVIDER": "external",
+        "SEARCH_BASE_URL": "https://example.com/v1/search",
+        "SEARCH_MODEL": "search-combo",
+        "SEARCH_API_KEY": "YOUR_EXTERNAL_SEARCH_API_KEY",
         "APIKEY_GOOGLE_SEARCH": "YOUR_GOOGLE_API_KEY",
         "CX_GOOGLE_SEARCH": "YOUR_CX_ID"
       }
@@ -197,20 +197,9 @@ To integrate web-curl as an MCP server, add the following configuration to your 
 
 ---
 
-### 🔑 How to Obtain Google API Key and CX
+### 🔑 Configure the External Search API
 
-1.  **Get a Google API Key:**
-    - Go to [Google Cloud Console](https://console.cloud.google.com/).
-    - Create/select a project, then go to **APIs & Services > Credentials**.
-    - Click **Create Credentials > API key** and copy it.
-2.  **Get a Custom Search Engine (CX) ID:**
-    - Go to [Google Custom Search Engine](https://cse.google.com/cse/all).
-    - Create/select a search engine, then copy the **Search engine ID** (CX).
-3.  **Enable Custom Search API:**
-    - In Google Cloud Console, go to **APIs & Services > Library**.
-    - Search for **Custom Search API** and enable it.
-
-Replace `YOUR_GOOGLE_API_KEY` and `YOUR_CX_ID` in the config above.
+Search uses one backend per request; it does not cascade or fall back. By default, set `SEARCH_PROVIDER=external`, `SEARCH_BASE_URL` to the endpoint (for example, `https://example.com/v1/search`), `SEARCH_MODEL` to the model/provider identifier accepted there (for example, `search-combo`), and `SEARCH_API_KEY` to the API key. To use Google Custom Search instead, set `SEARCH_PROVIDER=google` and configure `APIKEY_GOOGLE_SEARCH` plus `CX_GOOGLE_SEARCH`.
 
 ---
 
@@ -311,7 +300,7 @@ Only the tools below are exposed via `list_tools` to reduce tool-chaining in age
 
 - **browser_configure**: Set proxy/user-agent/viewport (session persistence is always on via `user_data/`).
 - **browser_close**: Close browser and tabs (also auto-closes after 15 minutes of inactivity).
-- **multi_search**: Run multiple Google searches in parallel (the only exposed search entrypoint).
+- **multi_search**: Run multiple searches in parallel using the selected search backend.
 - **fetch_api**: REST API request with response truncation (`limit`).
 - **download_file**: Download a file from a URL.
 - **parse_document**: Extract text from PDF/DOCX URLs.
@@ -368,7 +357,7 @@ Response (example):
 
 - **Session Persistence**: Always enabled. Logins and cookies are automatically reused across restarts.
 - **Timeout**: Set navigation and API request timeouts.
-- **Environment Variables**: Used for Google Search API integration (used by `multi_search`).
+- **Environment Variables**: Used for the selected search backend (`external` by default, or optional `google`).
 
 ---
 
@@ -428,7 +417,7 @@ Note: Session persistence is always enabled. Cookies and login sessions are auto
 ## 🛠️ Troubleshooting {#troubleshooting}
 
 - **Timeout Errors**: Increase the `timeout` parameter if requests are timing out.
-- **Google Search Fails**: Ensure `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH` are set in your environment.
+- **External Search Fails**: Ensure `SEARCH_PROVIDER=external` and `SEARCH_BASE_URL`, `SEARCH_MODEL`, and `SEARCH_API_KEY` match your provider. For Google Custom Search, set `SEARCH_PROVIDER=google`, `APIKEY_GOOGLE_SEARCH`, and `CX_GOOGLE_SEARCH`.
 - **Error Logs**: Check the `logs/error-log.txt` file for detailed error messages.
 
 ---
@@ -474,4 +463,4 @@ This project was developed by **Rayss**.
 For questions, improvements, or contributions, please contact the author or open an issue in the repository.
 
 ---
-> **Note:** Google Search API is free with usage limits. For details, see: [Google Custom Search API Overview](https://developers.google.com/custom-search/v1/overview)
+> **Note:** Search availability, quotas, and pricing depend on the selected backend, either your External Search API provider or Google Custom Search.

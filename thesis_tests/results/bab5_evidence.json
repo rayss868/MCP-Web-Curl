@@ -1,0 +1,207 @@
+[
+  {
+    "tool_discovery": [
+      "browser_flow",
+      "browser_configure",
+      "parse_document",
+      "fetch_api",
+      "download_file",
+      "multi_search",
+      "browser_close"
+    ]
+  },
+  {
+    "scenario": "S2_BROWSER_SNAPSHOT",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "browser_flow",
+    "args": {
+      "url": "http://127.0.0.1:8123/html/basic",
+      "waitForNetworkIdle": false,
+      "stabilizeMs": 0,
+      "result": {
+        "type": "snapshot",
+        "mode": "tree"
+      }
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:ogh2kk]\n  button: \"Click me\" [ref:y3m3am]\n"
+  },
+  {
+    "scenario": "S3_HTML_SLICING",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "browser_flow",
+    "args": {
+      "url": "http://127.0.0.1:8123/html/large",
+      "waitForNetworkIdle": false,
+      "stabilizeMs": 0,
+      "result": {
+        "type": "snapshot",
+        "mode": "html",
+        "startIndex": 0,
+        "endIndex": 500
+      }
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "{\n  \"mode\": \"html\",\n  \"totalLength\": 40091,\n  \"startIndex\": 0,\n  \"endIndex\": 500,\n  \"remainingCharacters\": 39591,\n  \"content\": \"<!DOCTYPE html><html><head></head><body><h1>LARGE_HTML_MARKER</h1><div>CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTENT CONTE\"\n}"
+  },
+  {
+    "scenario": "S4_API_NORMAL",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "fetch_api",
+    "args": {
+      "url": "http://127.0.0.1:8123/api/json",
+      "method": "GET",
+      "limit": 2000
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "{\n  \"status\": 200,\n  \"statusText\": \"OK\",\n  \"headers\": {\n    \"connection\": \"keep-alive\",\n    \"content-type\": \"application/json\",\n    \"date\": \"Sun, 09 Aug 2026 11:03:25 GMT\",\n    \"keep-alive\": \"timeout=5\",\n    \"transfer-encoding\": \"chunked\"\n  },\n  \"body\": {\n    \"ok\": true,\n    \"marker\": \"API_MARKER_RAYHAN_2026\",\n    \"value\": 42\n  },\n  \"ok\": true,\n  \"url\": \"http://127.0.0.1:8123/api/json\",\n  \"bodyLength\": 56,\n  \"truncated\": false,\n  \"responseTimeMs\": 14.779699999999139\n}"
+  },
+  {
+    "scenario": "S6_FILE_DOWNLOAD",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "download_file",
+    "args": {
+      "url": "http://127.0.0.1:8123/files/sample.txt",
+      "destinationFolder": "thesis_tests/downloads",
+      "filename": "download_1.txt"
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "File downloaded to: D:\\All_project\\own\\AI_Coder\\Native Tools\\curl\\thesis_tests\\downloads\\download_1.txt"
+  },
+  {
+    "scenario": "S7_PDF_PARSE",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "parse_document",
+    "args": {
+      "url": "http://127.0.0.1:8123/files/sample.pdf"
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "MCP-Web-Curl Thesis Fixture\nPDF_MARKER_RAYHAN_2026\nThis PDF is used only for deterministic parse_document testing.\n\n-- 1 of 1 --\n\n"
+  },
+  {
+    "scenario": "S8_DOCX_PARSE",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "parse_document",
+    "args": {
+      "url": "http://127.0.0.1:8123/files/sample.docx"
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "MCP-Web-Curl Thesis Fixture\n\nDOCX_MARKER_RAYHAN_2026\n\nThis document is used only for deterministic parse_document testing.\n\nMetric\n\nValue\n\nExpected\n\n42\n\n"
+  },
+  {
+    "scenario": "S9_SESSION_SET_PART",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "browser_flow",
+    "args": {
+      "url": "http://127.0.0.1:8123/session/set",
+      "waitForNetworkIdle": false,
+      "stabilizeMs": 0,
+      "result": {
+        "type": "snapshot",
+        "mode": "tree"
+      }
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "generic: \"SESSION_SET\"\n  heading: \"SESSION_SET\"\n"
+  },
+  {
+    "scenario": "R1_FORCED_TIMEOUT",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "fetch_api",
+    "args": {
+      "url": "http://127.0.0.1:8123/api/delay?ms=500",
+      "method": "GET",
+      "limit": 2000,
+      "timeout": 50
+    },
+    "pass": true,
+    "is_error": true,
+    "text": "Error: Request timed out after 0.05 seconds"
+  },
+  {
+    "scenario": "R2_CONNECTION_REFUSED",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "fetch_api",
+    "args": {
+      "url": "http://127.0.0.1:65534/unavailable",
+      "method": "GET",
+      "limit": 1000,
+      "timeout": 300
+    },
+    "pass": true,
+    "is_error": true,
+    "text": "Error: fetch failed"
+  },
+  {
+    "scenario": "R3_INVALID_DOCUMENT",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "parse_document",
+    "args": {
+      "url": "http://127.0.0.1:8123/files/sample.txt"
+    },
+    "pass": true,
+    "is_error": true,
+    "text": "Error: Unsupported document type. Only PDF and DOCX are supported."
+  },
+  {
+    "scenario": "R4_INVALID_TAB",
+    "condition": "mcp",
+    "rep": 1,
+    "tool": "browser_flow",
+    "args": {
+      "tabIndex": 999,
+      "result": {
+        "type": "snapshot",
+        "mode": "tree"
+      }
+    },
+    "pass": true,
+    "is_error": true,
+    "text": "Error: Invalid tabIndex"
+  },
+  {
+    "scenario": "PAIR_OUTPUT",
+    "condition": "baseline_full",
+    "rep": 1,
+    "tool": "fetch_api",
+    "args": {
+      "url": "http://127.0.0.1:8123/api/large",
+      "method": "GET",
+      "limit": 20000
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "{\n  \"status\": 200,\n  \"statusText\": \"OK\",\n  \"headers\": {\n    \"connection\": \"keep-alive\",\n    \"content-type\": \"application/json\",\n    \"date\": \"Sun, 09 Aug 2026 11:06:27 GMT\",\n    \"keep-alive\": \"timeout=5\",\n    \"transfer-encoding\": \"chunked\"\n  },\n  \"body\": {\n    \"marker\": \"LARGE_API_MARKER\",\n    \"data\": \"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  },
+  {
+    "scenario": "PAIR_OUTPUT",
+    "condition": "mcp_limited",
+    "rep": 1,
+    "tool": "fetch_api",
+    "args": {
+      "url": "http://127.0.0.1:8123/api/large",
+      "method": "GET",
+      "limit": 500
+    },
+    "pass": true,
+    "is_error": false,
+    "text": "{\n  \"status\": 200,\n  \"statusText\": \"OK\",\n  \"headers\": {\n    \"connection\": \"keep-alive\",\n    \"content-type\": \"application/json\",\n    \"date\": \"Sun, 09 Aug 2026 11:06:27 GMT\",\n    \"keep-alive\": \"timeout=5\",\n    \"transfer-encoding\": \"chunked\"\n  },\n  \"body\": \"{\\\"marker\\\":\\\"LARGE_API_MARKER\\\",\\\"data\\\":\\\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\n  \"ok\": true,\n  \"url\": \"http://127.0.0.1:8123/api/large\",\n  \"bodyLength\": 12039,\n  \"truncated\": true,\n  \"responseTimeMs\": 2.9794999999867287\n}"
+  }
+]

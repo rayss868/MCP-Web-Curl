@@ -1,4 +1,6 @@
 
+import 'dotenv/config';
+
 // Define the interface for the fetch_api tool arguments
 export interface FetchApiArgs {
   url: string;
@@ -36,6 +38,34 @@ export interface FetchApiResponse {
   responseTimeMs: number; // Add response time in milliseconds
 }
 
+const fetchWebFallback = async (url: string, signal: AbortSignal): Promise<Response> => {
+  const endpoint = process.env.EXTERNAL_API_URL;
+  const apiKey = process.env.EXTERNAL_API_KEY;
+  const model = process.env.EXTERNAL_API_MODEL;
+  if (!endpoint || !apiKey || !model) {
+    throw new Error('EXTERNAL_API_URL, EXTERNAL_API_KEY, and EXTERNAL_API_MODEL are required for web fetch fallback');
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ model, url, format: 'markdown', max_characters: 0 }),
+    signal,
+  });
+  if (!response.ok) throw new Error(`External web fetch failed with status ${response.status}`);
+
+  const result = await response.json();
+  const content = result.content;
+  if (typeof content !== 'string') throw new Error('External web fetch response has no content');
+  return new Response(content, {
+    status: 200,
+    headers: { 'Content-Type': 'text/markdown' },
+  });
+};
+
 // Function to make the API request
 export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> => {
   const { url, method, headers, body, timeout = 60000, limit, redirect = 'follow' } = args;
@@ -63,7 +93,20 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
       }
     }
 
-    const response: Response = await fetch(url, options);
+    let response: Response;
+    if (method === 'GET') {
+      try {
+        response = await fetch(url, options);
+        if (!response.ok) {
+          response = await fetchWebFallback(url, controller.signal);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        response = await fetchWebFallback(url, controller.signal);
+      }
+    } else {
+      response = await fetch(url, options);
+    }
     clearTimeout(timeoutId);
 
     const endTime = performance.now(); // End time measurement

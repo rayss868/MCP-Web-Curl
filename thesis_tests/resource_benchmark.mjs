@@ -1,0 +1,20 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import fs from 'fs'; import path from 'path'; import os from 'os'; import { execFileSync } from 'child_process'; import 'dotenv/config';
+const ROOT='http://127.0.0.1:8123'; const OUT=path.join(process.cwd(),'thesis_tests','results'); fs.mkdirSync(OUT,{recursive:true});
+const transport=new StdioClientTransport({command:'node',args:['build/index.js'],env:process.env,stderr:'ignore'});
+const client=new Client({name:'resource-benchmark',version:'1.0.0'},{capabilities:{}}); await client.connect(transport);
+const serverPid=transport._process?.pid||0; const cores=os.cpus().length;
+function metrics(includeBrowser=false){try{let roots=[serverPid];if(includeBrowser){const f=path.join(process.cwd(),'logs','browser.pid');if(fs.existsSync(f)){const bp=Number(fs.readFileSync(f,'utf8').trim())||0;if(bp)roots.push(bp);}}const rootText=roots.join(',');const ps=`$roots=@(${rootText}); $all=Get-CimInstance Win32_Process; $pids=@(); function AddTree([int]$p){if($script:pids -contains $p){return};$script:pids+=$p;foreach($c in $all|?{$_.ParentProcessId -eq $p}){AddTree $c.ProcessId}};foreach($r in $roots){AddTree $r};$procs=Get-Process -Id $pids -ErrorAction SilentlyContinue;[pscustomobject]@{rss_mb=[math]::Round((($procs|measure WorkingSet64 -Sum).Sum/1MB),2);cpu_s=[math]::Round((($procs|measure CPU -Sum).Sum),4);process_count=@($procs).Count}|ConvertTo-Json -Compress`;return JSON.parse(execFileSync('powershell',['-NoProfile','-Command',ps],{encoding:'utf8',timeout:10000}));}catch{return {rss_mb:null,cpu_s:null,process_count:null}}}
+async function call(name,args){const r=await client.callTool({name,arguments:args});if(r.isError)throw new Error((r.content||[]).map(x=>x.text||'').join('\n'));return r;}
+async function closeBrowser(){try{await call('browser_close',{})}catch{};await new Promise(r=>setTimeout(r,150));}
+async function batch(id,n,fn,includeBrowser=false){const before=metrics(includeBrowser);const t0=performance.now();let ok=0;for(let i=0;i<n;i++){try{await fn(i);ok++}catch{}}const wall=(performance.now()-t0)/1000;const after=metrics(includeBrowser);const cpuDelta=(after.cpu_s??0)-(before.cpu_s??0);return {scenario:id,n,success:ok,wall_s:+wall.toFixed(4),ops_per_s:+(ok/wall).toFixed(3),cpu_time_s:+cpuDelta.toFixed(4),cpu_util_pct:+(100*cpuDelta/(wall*cores)).toFixed(3),rss_before_mb:before.rss_mb,rss_after_mb:after.rss_mb,rss_delta_mb:+((after.rss_mb??0)-(before.rss_mb??0)).toFixed(2),processes_before:before.process_count,processes_after:after.process_count,logical_cores:cores};}
+const results=[]; await closeBrowser();
+results.push(await batch('API_LOCAL',500,()=>call('fetch_api',{url:ROOT+'/api/json',method:'GET',limit:2000})));
+results.push(await batch('PDF_PARSE_LOCAL',100,()=>call('parse_document',{url:ROOT+'/files/sample.pdf'})));
+results.push(await batch('DOCX_PARSE_LOCAL',100,()=>call('parse_document',{url:ROOT+'/files/sample.docx'})));
+const dl=path.join(process.cwd(),'thesis_tests','downloads'); fs.mkdirSync(dl,{recursive:true});
+results.push(await batch('FILE_DOWNLOAD_LOCAL',100,async i=>{const f=path.join(dl,`resource_${i}.txt`);try{if(fs.existsSync(f))fs.unlinkSync(f)}catch{};await call('download_file',{url:ROOT+'/files/sample.txt',destinationFolder:'thesis_tests/downloads',filename:`resource_${i}.txt`});}));
+await call('browser_flow',{url:ROOT+'/html/basic',waitForNetworkIdle:false,stabilizeMs:0,result:{type:'snapshot',mode:'tree'}});
+results.push(await batch('BROWSER_SNAPSHOT_WARM',100,()=>call('browser_flow',{url:ROOT+'/html/basic',waitForNetworkIdle:false,stabilizeMs:0,result:{type:'snapshot',mode:'tree'}}),true));
+await closeBrowser(); fs.writeFileSync(path.join(OUT,'resource_benchmark.json'),JSON.stringify(results,null,2)); console.log(JSON.stringify(results,null,2)); await client.close();

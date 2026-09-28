@@ -1,0 +1,236 @@
+﻿[
+  {
+    "name": "browser_basic",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 549.4043999999999,
+    "output_chars": 165,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:lhsvc]\n  button: \"Click me\" [ref:pcrz27]\n"
+  },
+  {
+    "name": "browser_action_click",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 56.44889999999987,
+    "output_chars": 168,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"clicked\"\n  link: \"Second page\" [ref:2q7dpy]\n  button: \"Click me\" [ref:xhs1n6]\n"
+  },
+  {
+    "name": "api_normal",
+    "tool": "fetch_api",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 15.616800000000012,
+    "output_chars": 472,
+    "sample": "{\n  \"status\": 200,\n  \"statusText\": \"OK\",\n  \"headers\": {\n    \"connection\": \"keep-alive\",\n    \"content-type\": \"application/json\",\n    \"date\": \"Sun, 09 Aug 2026 10:45:14 GMT\",\n    \"keep-alive\": \"timeout=5\",\n    \"transfer-encoding\": \"chunked\"\n "
+  },
+  {
+    "name": "api_output_limit",
+    "tool": "fetch_api",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 3.5458000000000993,
+    "output_chars": 506,
+    "sample": "{\n  \"status\": 200,\n  \"statusText\": \"OK\",\n  \"headers\": {\n    \"connection\": \"keep-alive\",\n    \"content-type\": \"application/json\",\n    \"date\": \"Sun, 09 Aug 2026 10:45:14 GMT\",\n    \"keep-alive\": \"timeout=5\",\n    \"transfer-encoding\": \"chunked\"\n "
+  },
+  {
+    "name": "api_forced_timeout",
+    "tool": "fetch_api",
+    "ok": false,
+    "isError": true,
+    "latency_ms": 70.80250000000001,
+    "output_chars": 43,
+    "sample": "Error: Request timed out after 0.05 seconds"
+  },
+  {
+    "name": "download_file",
+    "tool": "download_file",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 13.438500000000204,
+    "output_chars": 105,
+    "sample": "File downloaded to: D:\\All_project\\own\\AI_Coder\\Native Tools\\curl\\thesis_tests\\downloads\\pilot_sample.txt"
+  },
+  {
+    "name": "parse_pdf",
+    "tool": "parse_document",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 112.13369999999986,
+    "output_chars": 130,
+    "sample": "MCP-Web-Curl Thesis Fixture\nPDF_MARKER_RAYHAN_2026\nThis PDF is used only for deterministic parse_document testing.\n\n-- 1 of 1 --\n\n"
+  },
+  {
+    "name": "parse_docx",
+    "tool": "parse_document",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 109.79690000000028,
+    "output_chars": 153,
+    "sample": "MCP-Web-Curl Thesis Fixture\n\nDOCX_MARKER_RAYHAN_2026\n\nThis document is used only for deterministic parse_document testing.\n\nMetric\n\nValue\n\nExpected\n\n42\n\n"
+  },
+  {
+    "name": "multi_search",
+    "tool": "multi_search",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 675.5876000000003,
+    "output_chars": 3868,
+    "sample": "[\n  {\n    \"query\": \"Model Context Protocol OpenAI\",\n    \"results\": [\n      {\n        \"title\": \"Building MCP servers for plugins and API integrations\",\n        \"link\": \"https://developers.openai.com/api/docs/mcp\",\n        \"snippet\": \"Model C"
+  },
+  {
+    "name": "session_set",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 39.90159999999969,
+    "output_chars": 48,
+    "sample": "generic: \"SESSION_SET\"\n  heading: \"SESSION_SET\"\n"
+  },
+  {
+    "name": "browser_close_mid",
+    "tool": "browser_close",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 190.0608000000002,
+    "output_chars": 14,
+    "sample": "Browser closed"
+  },
+  {
+    "name": "session_reuse",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 562.4864000000002,
+    "output_chars": 145,
+    "sample": "generic: \"SESSION_CHECK\"\n  heading: \"SESSION_CHECK\"\n  generic: \"thesis_session=SESSION_MARKER_RAYHAN_2026\"\n  generic: \"LOCAL_MARKER_RAYHAN_2026\"\n"
+  },
+  {
+    "name": "tab_create_1",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 55.91789999999992,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:x5tkvm]\n  button: \"Click me\" [ref:od1d5j]\n"
+  },
+  {
+    "name": "tab_create_2",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 68.07819999999992,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:umbs6i]\n  button: \"Click me\" [ref:s24n4k]\n"
+  },
+  {
+    "name": "tab_create_3",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 59.077400000000125,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:5ly5y8]\n  button: \"Click me\" [ref:411f2i]\n"
+  },
+  {
+    "name": "tab_create_4",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 63.845800000000054,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:zvfbgn]\n  button: \"Click me\" [ref:hjbxo7]\n"
+  },
+  {
+    "name": "tab_create_5",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 54.72830000000022,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:9d0ix9]\n  button: \"Click me\" [ref:igs3n3]\n"
+  },
+  {
+    "name": "tab_create_6",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 62.319800000000214,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:q7j3vt]\n  button: \"Click me\" [ref:xbfseo]\n"
+  },
+  {
+    "name": "tab_create_7",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 55.136999999999716,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:8giy16]\n  button: \"Click me\" [ref:i5ne5e]\n"
+  },
+  {
+    "name": "tab_create_8",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 62.22639999999956,
+    "output_chars": 165,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:qt6x7]\n  button: \"Click me\" [ref:0z344w]\n"
+  },
+  {
+    "name": "tab_create_9",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 72.57859999999982,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:4euykb]\n  button: \"Click me\" [ref:igqkxp]\n"
+  },
+  {
+    "name": "tab_create_10",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 98.02109999999993,
+    "output_chars": 165,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:2hl7r9]\n  button: \"Click me\" [ref:khxpw]\n"
+  },
+  {
+    "name": "tab_create_11",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 98.00880000000052,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:s2mh2t]\n  button: \"Click me\" [ref:rl5bor]\n"
+  },
+  {
+    "name": "tab_create_12",
+    "tool": "browser_flow",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 114.08600000000024,
+    "output_chars": 166,
+    "sample": "generic: \"BROWSER_MARKER_RAYHAN_2026\"\n  heading: \"BROWSER_MARKER_RAYHAN_2026\"\n  generic: \"ready\"\n  link: \"Second page\" [ref:n1i5f2]\n  button: \"Click me\" [ref:8vogsu]\n"
+  },
+  {
+    "name": "tab_list_after_12",
+    "tool": "browser_tabs",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 56.06259999999929,
+    "output_chars": 1293,
+    "sample": "[\n  {\n    \"index\": 0,\n    \"active\": false,\n    \"url\": \"http://127.0.0.1:8123/html/basic?tab=2\",\n    \"title\": \"Thesis Fixture\"\n  },\n  {\n    \"index\": 1,\n    \"active\": false,\n    \"url\": \"http://127.0.0.1:8123/html/basic?tab=3\",\n    \"title\": \"T"
+  },
+  {
+    "name": "browser_close_final",
+    "tool": "browser_close",
+    "ok": true,
+    "isError": false,
+    "latency_ms": 180.45839999999953,
+    "output_chars": 14,
+    "sample": "Browser closed"
+  }
+]
