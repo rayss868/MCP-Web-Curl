@@ -57,43 +57,6 @@ interface ScreenshotArgs {
   destinationFolder?: string;
 }
 
-interface BrowserFlowArgs {
-  /** If provided, navigate to this URL before doing anything else */
-  url?: string;
-
-  /** If true, opens a new tab before running the flow */
-  newTab?: boolean;
-
-  /** If provided, selects this tab index first (0-based) */
-  tabIndex?: number;
-
-  /** Navigation timeout (ms). Defaults to 90000 */
-  navigationTimeoutMs?: number;
-
-  /** If set, waits for network idle after navigation (recommended for SPAs). Defaults to true when url is provided. */
-  waitForNetworkIdle?: boolean;
-
-  /** Network idle wait timeout (ms). Defaults to 30000 */
-  networkIdleTimeoutMs?: number;
-
-  /** Network idle time window (ms). Defaults to 1000 */
-  networkIdleTimeMs?: number;
-
-  /** Extra delay after navigation to allow hydration. Defaults to 1500 */
-  stabilizeMs?: number;
-
-  /** Optional page interactions to run after navigation */
-  actions?: BrowserActionArgs[];
-
-  /** What to return at the end (defaults to snapshot tree) */
-  result?:
-    | { type: 'snapshot'; mode?: 'tree' | 'html'; startIndex?: number; endIndex?: number }
-    | { type: 'screenshot'; filename?: string; fullPage?: boolean; destinationFolder?: string }
-    | { type: 'links' }
-    | { type: 'network'; includeStatic?: boolean }
-    | { type: 'console' };
-}
-
 class WebCurlServer {
   private server: Server;
   private browser: Browser | null = null;
@@ -407,58 +370,6 @@ class WebCurlServer {
         // Expose only a small, agent-friendly surface to reduce tool-chaining.
         // Lower-level tools still exist in CallToolRequestSchema for manual/debug usage.
         {
-          name: 'browser_flow',
-          description:
-            'One-call browser workflow: (optional) open URL → (optional) actions → return ONE result (snapshot/screenshot/links/console/network). Use this for almost all browser tasks to avoid many steps.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              url: { type: 'string', description: 'Optional URL to open before running actions.' },
-              newTab: { type: 'boolean', description: 'If true, opens a new tab first (default false).' },
-              tabIndex: { type: 'number', description: 'Optional tab index to select before running the flow.' },
-              navigationTimeoutMs: { type: 'number', description: 'Navigation timeout in ms (default 90000).' },
-              waitForNetworkIdle: {
-                type: 'boolean',
-                description: 'After navigation, wait for network-idle (recommended for SPAs). Default true when url is provided.'
-              },
-              networkIdleTimeoutMs: { type: 'number', description: 'Network-idle wait timeout in ms (default 30000).' },
-              networkIdleTimeMs: { type: 'number', description: 'Network-idle window in ms (default 1000).' },
-              stabilizeMs: { type: 'number', description: 'Extra delay after navigation to let hydration finish (default 1500).' },
-              actions: {
-                type: 'array',
-                description: 'Optional list of page interactions to run after navigation.',
-                items: {
-                  type: 'object',
-                  properties: {
-                    action: { type: 'string', enum: ['click', 'type', 'scroll', 'press_key', 'hover', 'waitForSelector'], description: 'Interaction type.' },
-                    selector: { type: 'string', description: 'CSS selector or ref from snapshot (e.g., ref:abcd).' },
-                    text: { type: 'string', description: 'Text to type (for action="type").' },
-                    direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction (for action="scroll").' },
-                    key: { type: 'string', description: 'Keyboard key (for action="press_key").' },
-                    timeout: { type: 'number', description: 'Wait timeout for selector-based actions (default 30000).' }
-                  },
-                  required: ['action']
-                }
-              },
-              result: {
-                type: 'object',
-                description: 'What to return at the end. Defaults to {type:"snapshot", mode:"tree"}.',
-                properties: {
-                  type: { type: 'string', enum: ['snapshot', 'screenshot', 'links', 'network', 'console'], description: 'Final output type.' },
-                  mode: { type: 'string', enum: ['tree', 'html'], description: 'For snapshot only: tree (default) or html slice.' },
-                  startIndex: { type: 'number', description: 'For snapshot html: slice start (default 0).' },
-                  endIndex: { type: 'number', description: 'For snapshot html: slice end (default startIndex+20000).' },
-                  filename: { type: 'string', description: 'For screenshot: custom filename.' },
-                  fullPage: { type: 'boolean', description: 'For screenshot: full page (true) or viewport (false). Default true.' },
-                  destinationFolder: { type: 'string', description: 'For screenshot: output directory (relative to project root or absolute).' },
-                  includeStatic: { type: 'boolean', description: 'For network: include images/fonts/css (default false).' }
-                },
-                required: ['type']
-              }
-            }
-          }
-        },
-        {
           name: 'browser_configure',
           description: 'Set browser-wide settings (proxy, user-agent, viewport). Sessions are always persisted automatically using the local user_data/ profile.',
           inputSchema: {
@@ -548,7 +459,7 @@ class WebCurlServer {
         {
           name: 'extract',
           description:
-            'Extract structured content from an HTML page: CSS-selector fields, tables, meta tags, JSON-LD blocks, Readability main content, and detected schema types (og:type / JSON-LD @type).',
+            'Extract structured content from a page: CSS-selector fields, tables, meta tags, JSON-LD blocks, Readability main content, and detected schema types (og:type / JSON-LD @type). Non-HTML responses (text, JSON, source files) are returned as raw text in mainContent instead of failing.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -733,7 +644,7 @@ class WebCurlServer {
 
         // Only browser-specific low-level tools need an active Page.
         // Non-browser tools (API, search, document, download) must not launch Chromium.
-        // browser_flow and batch_navigate manage their own page lifecycle internally.
+        // batch_navigate manages its own page lifecycle internally.
         const pageTools = new Set([
           'browser_navigate', 'browser_snapshot', 'browser_action', 'take_screenshot',
           'browser_network_requests', 'browser_console_messages', 'browser_links'
@@ -758,117 +669,6 @@ class WebCurlServer {
           await new Promise(r => setTimeout(r, 1500));
           
           return { content: [{ type: 'text', text: `Navigated to ${url}` }] };
-        } else if (toolName === 'browser_flow') {
-          const flow = (args || {}) as BrowserFlowArgs;
-
-          // Tab selection / creation
-          if (flow.tabIndex !== undefined) {
-            if (flow.tabIndex < 0 || flow.tabIndex >= this.pages.length) throw new Error('Invalid tabIndex');
-            this.activePageIndex = flow.tabIndex;
-          }
-          if (flow.newTab) {
-            await this.createNewPage();
-            this.activePageIndex = this.pages.length - 1;
-          }
-
-          const p = await this.getPage();
-
-          // Optional navigate
-          if (flow.url) {
-            const navTimeout = flow.navigationTimeoutMs ?? 90000;
-            this.networkRequests.set(p, []);
-            this.consoleMessages.set(p, []);
-            await p.goto(flow.url, { waitUntil: 'domcontentloaded', timeout: navTimeout });
-
-            const shouldWaitIdle = flow.waitForNetworkIdle ?? true;
-            if (shouldWaitIdle) {
-              const idleTime = flow.networkIdleTimeMs ?? 1000;
-              const idleTimeout = flow.networkIdleTimeoutMs ?? 30000;
-              try {
-                await p.waitForNetworkIdle({ idleTime, timeout: idleTimeout });
-              } catch (e) {
-                console.error('[Browser] Network idle timeout (browser_flow), proceeding anyway');
-              }
-            }
-
-            const stabilize = flow.stabilizeMs ?? 1500;
-            if (stabilize > 0) await new Promise(r => setTimeout(r, stabilize));
-          }
-
-          // Optional actions
-          if (flow.actions && flow.actions.length > 0) {
-            for (const action of flow.actions) {
-              await this.performBrowserAction(action);
-            }
-          }
-
-          const result = flow.result ?? { type: 'snapshot', mode: 'tree' };
-
-          if (result.type === 'snapshot') {
-            const mode = result.mode ?? 'tree';
-            if (mode === 'html') {
-              const html = await p.content();
-              const startIndex = result.startIndex ?? 0;
-              const safeStart = Math.max(0, Math.floor(startIndex));
-              const defaultEnd = safeStart + 20000;
-              const safeEnd = Math.min(html.length, result.endIndex !== undefined ? Math.floor(result.endIndex) : defaultEnd);
-              const slice = html.slice(safeStart, safeEnd);
-              const remainingCharacters = Math.max(0, html.length - safeEnd);
-              return {
-                content: [
-                  {
-                    type: 'text',
-                    text: JSON.stringify(
-                      {
-                        mode: 'html',
-                        totalLength: html.length,
-                        startIndex: safeStart,
-                        endIndex: safeEnd,
-                        remainingCharacters,
-                        content: slice
-                      },
-                      null,
-                      2
-                    )
-                  }
-                ]
-              };
-            }
-
-            const tree = await this.getAccessibilityTree(p);
-            return { content: [{ type: 'text', text: tree }] };
-          }
-
-          if (result.type === 'screenshot') {
-            const filePath = await this.takeScreenshot({
-              filename: result.filename,
-              fullPage: result.fullPage,
-              destinationFolder: result.destinationFolder
-            });
-            return { content: [{ type: 'text', text: `Screenshot saved: ${filePath}` }] };
-          }
-
-          if (result.type === 'links') {
-            const links = await p.evaluate(() =>
-              Array.from(document.querySelectorAll('a'))
-                .map(a => ({ text: a.innerText.trim(), href: (a as HTMLAnchorElement).href }))
-                .filter(l => l.href.startsWith('http'))
-            );
-            return { content: [{ type: 'text', text: JSON.stringify(links, null, 2) }] };
-          }
-
-          if (result.type === 'console') {
-            return { content: [{ type: 'text', text: JSON.stringify(this.consoleMessages.get(p) || [], null, 2) }] };
-          }
-
-          if (result.type === 'network') {
-            const includeStatic = result.includeStatic ?? false;
-            const reqs = this.networkRequests.get(p) || [];
-            const filtered = includeStatic ? reqs : reqs.filter(r => !['image', 'font', 'stylesheet', 'media'].includes(r.resourceType));
-            return { content: [{ type: 'text', text: JSON.stringify(filtered, null, 2) }] };
-          }
-
-          throw new Error('Invalid browser_flow result type');
         } else if (toolName === 'batch_navigate') {
           const { urls } = args as any;
           const results = [];

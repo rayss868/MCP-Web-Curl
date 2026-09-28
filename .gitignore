@@ -1,8 +1,24 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies & build output
 node_modules/
 build/
-.env
+*.tsbuildinfo
+
+# Persistent Chromium profile (contains cookies/session data)
+user_data/
+
+# Runtime output
 logs/
 screenshots/
-user_data/
-temp_test_downloads/
+metrics/
 .tmp/
+temp_test_downloads/
+test_results/
+
+# Scratch files
+debug-fetch.js
+google-search-test.js

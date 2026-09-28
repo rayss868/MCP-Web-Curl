@@ -37,16 +37,16 @@ Google Custom Search API is free with usage limits (e.g., 100 queries per day fo
 
 ## 🎬 Demo Video
 
-[![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](demo/demo_1.mp4)
+[![Watch the demo](https://img.shields.io/badge/Video-Demo-blue?logo=playstation)](demo/demo.mp4)
 
-> [Click here to watch the demo video directly in your browser.](demo/demo_1.mp4)
+> [Click here to watch the demo video directly in your browser.](demo/demo.mp4)
 
-If your platform supports it, you can also [download and play demo/demo_1.mp4](demo/demo_1.mp4) directly.
+If your platform supports it, you can also [download and play demo/demo.mp4](demo/demo.mp4) directly.
 
 <div align="center">
 
 <video width="640" height="360" controls autoplay>
-  <source src="demo/demo_1.mp4" type="video/mp4">
+  <source src="demo/demo.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
@@ -93,21 +93,14 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 
 - **Advanced Browser Automation**: Full control over Chromium via Puppeteer (click, type, scroll, hover, key presses).
 - **Always-On Session Persistence**: Browser profiles are now always persistent. Login sessions, cookies, and cache are automatically saved in a local `user_data/` directory.
-- **Token-Efficient Snapshots**:
+- **Token-Efficient Snapshots** (available via the hidden `browser_snapshot` handler):
     - **Accessibility Tree**: Clean, structured snapshots instead of messy HTML.
     - **HTML Slice Mode**: Raw HTML with `startIndex`/`endIndex` for safe chunking when needed.
-    - **Viewport Filtering**: Automatically filters out elements not visible on screen, saving up to 90% of context tokens on long pages.
 - **Chrome DevTools Integration (implemented, but hidden from `list_tools`)**:
     - Network Monitoring (`browser_network_requests`)
     - Console Logs (`browser_console_messages`)
 - **Parallel Search**:
     - `multi_search`: Run multiple Google searches at once (only exposed search tool).
-- **Research Pipeline**:
-    - `research`: Decompose a question into sub-queries, run them in parallel, dedupe, and synthesize a markdown report with numbered citations.
-    - `agent`: Collect structured data across pages using a field schema (CSS selectors and/or JSON-LD paths).
-- **Structured Extraction**:
-    - `extract`: CSS-selector fields, tables, meta tags, JSON-LD blocks, Readability main content, and schema-type detection.
-    - `crawl`: BFS/DFS traversal, sitemap parsing (incl. index files), or one-page link map, with include/exclude regex, same-domain restriction, and politeness delay.
 - **Intelligent Resource Management**:
     - **Idle Auto-Close**: Browser automatically shuts down after 15 minutes of inactivity to save RAM/CPU.
     - **Tab Rotation**: Automatically replaces the oldest tab when the 10-tab limit is reached.
@@ -123,7 +116,6 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
 - 🔎 Content extraction:
   - Returns raw text, HTML, and Readability "main article" when available. Readability attempts to extract the primary content of a webpage, removing headers, footers, sidebars, and other non-essential elements, providing a cleaner, more focused text.
   - Readability output is subject to `startIndex`/`maxLength`/`chunkSize` slicing when requested.
-- 🚫 Resource blocking: `blockResources` is now always forced to `false`, meaning resources are never blocked for faster page loads.
 - ⏱️ Timeout control: navigation and API request timeouts are configurable via tool arguments.
 - 💾 Output: results can be printed to stdout or written to a file via CLI options.
 - ⬇️ Download behavior (`download_file`):
@@ -150,19 +142,15 @@ This section outlines the high-level architecture of Web-curl.
 graph TD
     A[User/MCP Host] --> B(CLI / MCP Server)
     B --> C{Tool Handlers}
-    C -- browser_flow --> D["Puppeteer (Web Scraping)"]
+    C -- extract/crawl/agent --> D["Puppeteer (Web Scraping)"]
     C -- fetch_api --> E["REST Client"]
     C -- multi_search --> F["Google Custom Search API"]
     C -- parse_document --> G["Document Parser (PDF/DOCX)"]
     C -- download_file --> H["File System (Downloads)"]
-    C -- research --> F
-    C -- agent --> F
-    C -- extract --> I["HTML Parser (jsdom + Readability)"]
-    C -- crawl --> I
-    D --> J["Web Content"]
-    E --> K["External APIs"]
-    F --> L["Google Search Results"]
-    H --> M["Local Storage"]
+    D --> I["Web Content"]
+    E --> J["External APIs"]
+    F --> K["Google Search Results"]
+    H --> L["Local Storage"]
 ```
 *   **CLI & MCP Server**: [`src/index.ts`](src/index.ts)
     Implements both the CLI entry point and the MCP server.
@@ -187,17 +175,16 @@ To integrate web-curl as an MCP server, add the following configuration to your 
       ],
       "disabled": false,
       "alwaysAllow": [
-        "browser_flow",
+        "extract",
+        "crawl",
+        "agent",
+        "research",
         "browser_configure",
         "browser_close",
         "multi_search",
         "fetch_api",
         "download_file",
-        "parse_document",
-        "research",
-        "extract",
-        "crawl",
-        "agent"
+        "parse_document"
       ],
       "env": {
         "APIKEY_GOOGLE_SEARCH": "YOUR_GOOGLE_API_KEY",
@@ -322,18 +309,18 @@ Web-curl can be run as an MCP server for integration with Roo Context or other M
 
 Only the tools below are exposed via `list_tools` to reduce tool-chaining in agent clients.
 
-- **browser_flow**: One-call browser workflow (optional navigate → optional actions → return ONE result).
 - **browser_configure**: Set proxy/user-agent/viewport (session persistence is always on via `user_data/`).
 - **browser_close**: Close browser and tabs (also auto-closes after 15 minutes of inactivity).
-
 - **multi_search**: Run multiple Google searches in parallel (the only exposed search entrypoint).
 - **fetch_api**: REST API request with response truncation (`limit`).
 - **download_file**: Download a file from a URL.
 - **parse_document**: Extract text from PDF/DOCX URLs.
-- **research**: Research pipeline — question decomposition → parallel sub-search → dedup → synthesized markdown report with numbered citations.
-- **extract**: Structured page extraction — CSS selectors, tables, meta tags, JSON-LD, Readability main content, schema-type detection.
-- **crawl**: Site traversal — BFS/DFS, sitemap (incl. index files), or one-page map, with include/exclude regex and politeness delay.
-- **agent**: Structured data collection across pages — field schema with CSS selectors and/or JSON-LD paths, type coercion, required-field validation.
+- **research**: Decompose a question into sub-queries, search in parallel, and return a cited markdown report.
+- **extract**: Pull structured fields from a page via CSS selectors, tables, meta tags, JSON-LD, or Readability. Non-HTML responses (plain text, JSON, source files) come back as raw text in `mainContent` with `isHtml: false`.
+- **crawl**: Traverse a site (BFS/DFS/sitemap/link-map) with include/exclude filters and a politeness delay.
+- **agent**: Collect flat records from many pages using a field schema (CSS selectors and/or JSON-LD paths).
+
+Lower-level browser tools still have handlers in `CallToolRequestSchema` but are intentionally not exposed.
 
 #### Running as MCP Server
 
@@ -345,21 +332,21 @@ The server will communicate via stdin/stdout and expose the tools as defined in 
 
 ---
 
-### 🚦 HTML Slicing Example (Recommended for Large Pages)
+### 🚦 Keeping Responses Small (Recommended for Large Pages)
 
-Use [`browser_flow`](src/index.ts:395) with `result: { type: "snapshot", mode: "html" }` when you need raw HTML but want to keep the response small.
+Use [`extract`](src/index.ts:460) with `maxTextChars` to cap the main-content text, and turn off the extra
+extractors you do not need. This keeps large pages from flooding the context.
 
-Client request for first slice:
+Client request for a trimmed extraction:
 ```json
 {
-  "name": "browser_flow",
+  "name": "extract",
   "arguments": {
-    "result": {
-      "type": "snapshot",
-      "mode": "html",
-      "startIndex": 0,
-      "endIndex": 20000
-    }
+    "url": "https://example.com/article",
+    "includeTables": false,
+    "includeJsonLd": false,
+    "includeMeta": false,
+    "maxTextChars": 20000
   }
 }
 ```
@@ -367,12 +354,10 @@ Client request for first slice:
 Response (example):
 ```json
 {
-  "mode": "html",
-  "totalLength": 123456,
-  "startIndex": 0,
-  "endIndex": 20000,
-  "remainingCharacters": 103456,
-  "content": "<html>...first slice...</html>"
+  "url": "https://example.com/article",
+  "title": "Example Article",
+  "mainContent": "The first 20000 characters of readable text...",
+  "truncated": true
 }
 ```
 

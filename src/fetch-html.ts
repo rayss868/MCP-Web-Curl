@@ -2,7 +2,7 @@ import { JSDOM } from 'jsdom';
 
 export interface FetchedPage {
   url: string; // Final URL after redirects
-  html: string;
+  html: string; // Raw response body as text (HTML markup or plain text)
   contentType: string;
   status: number;
   dom: JSDOM;

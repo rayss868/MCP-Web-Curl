@@ -19,12 +19,15 @@ export interface ExtractArgs {
 }
 
 /**
- * Extract structured content from an HTML page:
+ * Extract structured content from a page:
  *  - CSS selector based fields
  *  - tables (array of rows, each row an array of cell texts)
  *  - meta tags + JSON-LD blocks
  *  - Readability main-content extraction
  *  - heuristic schema-type detection (og:type / JSON-LD @type)
+ *
+ * Non-HTML responses (text/plain, application/json, source files) are returned
+ * as raw text in `mainContent` instead of being rejected.
  */
 export async function runExtract(args: ExtractArgs): Promise<any> {
   const {
@@ -37,7 +40,26 @@ export async function runExtract(args: ExtractArgs): Promise<any> {
     maxTextChars = 20000,
   } = args;
 
-  const { url: finalUrl, dom } = await fetchHtml(url);
+  const { url: finalUrl, html, contentType, dom } = await fetchHtml(url, { requireHtml: false });
+  const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml+xml');
+
+  if (!isHtml) {
+    const text = includeMainContent ? html.trim().slice(0, maxTextChars) : undefined;
+    return {
+      url,
+      finalUrl,
+      contentType,
+      isHtml: false,
+      title: '',
+      meta: {},
+      schemaTypes: [],
+      jsonLd: [],
+      tables: [],
+      custom: {},
+      mainContent: text,
+    };
+  }
+
   const doc = dom.window.document;
 
   const title = doc.title.trim() || doc.querySelector('h1')?.textContent?.trim() || '';
@@ -108,6 +130,8 @@ export async function runExtract(args: ExtractArgs): Promise<any> {
   return {
     url,
     finalUrl,
+    contentType,
+    isHtml: true,
     title,
     meta,
     schemaTypes,
