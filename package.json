@@ -11,8 +11,7 @@
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "start": "node build/index.js",
-    "lint": "npx eslint ./src --ext .ts",
-    "metrics": "tsx scripts/run_metrics.ts"
+    "lint": "npx eslint ./src --ext .ts"
   },
   "keywords": [
     "web-scraping",

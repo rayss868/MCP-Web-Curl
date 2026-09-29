@@ -121,8 +121,8 @@ See [CHANGELOG.md](CHANGELOG.md) for a complete history of updates and new featu
   - Filenames are derived from the URL path (e.g., `https://.../path/file.jpg` -> `file.jpg`). If no filename is present, the fallback name is `downloaded_file`.
   - Overwrite semantics: by default the implementation will overwrite an existing file with the same name.
 - 🖥️ Usage modes: CLI and MCP server (stdin/stdout transport).
-- 🌐 REST client: `fetch_api` returns JSON/text when appropriate and base64 for binary responses.
-- 🔍 Search uses one backend at a time: External API by default, or optional Google Custom Search with `SEARCH_PROVIDER=google`.
+- 🌐 REST client: `fetch_api` tries a direct GET first and uses the configured External API web fetch when the request fails or returns a non-2xx response. Non-GET methods are sent directly.
+- 🔍 Search uses Google Custom Search first, then falls back to the External Search API when Google reports a quota or rate limit.
 - 🤖 Smart command:
   - Auto language detection (franc-min) and optional translation (dynamic `translate` import).
   - Query enrichment is heuristic-based; results depend on the detected intent.
@@ -183,7 +183,6 @@ To integrate web-curl as an MCP server, add the following configuration to your 
         "parse_document"
       ],
       "env": {
-        "SEARCH_PROVIDER": "external",
         "SEARCH_BASE_URL": "https://example.com/v1/search",
         "SEARCH_MODEL": "search-combo",
         "SEARCH_API_KEY": "YOUR_EXTERNAL_SEARCH_API_KEY",
@@ -199,7 +198,7 @@ To integrate web-curl as an MCP server, add the following configuration to your 
 
 ### 🔑 Configure the External Search API
 
-Search uses one backend per request; it does not cascade or fall back. By default, set `SEARCH_PROVIDER=external`, `SEARCH_BASE_URL` to the endpoint (for example, `https://example.com/v1/search`), `SEARCH_MODEL` to the model/provider identifier accepted there (for example, `search-combo`), and `SEARCH_API_KEY` to the API key. To use Google Custom Search instead, set `SEARCH_PROVIDER=google` and configure `APIKEY_GOOGLE_SEARCH` plus `CX_GOOGLE_SEARCH`.
+Search always tries Google Custom Search first, using `APIKEY_GOOGLE_SEARCH` and `CX_GOOGLE_SEARCH`. If Google reports a quota or rate limit (`429`, or a quota/rate-limit `403`), search automatically falls back to the External Search API. Configure `SEARCH_BASE_URL` (for example, `https://example.com/v1/search`), `SEARCH_MODEL` (for example, `search-combo`), and `SEARCH_API_KEY` to enable the fallback. Other Google errors are returned without fallback.
 
 ---
 
@@ -357,7 +356,7 @@ Response (example):
 
 - **Session Persistence**: Always enabled. Logins and cookies are automatically reused across restarts.
 - **Timeout**: Set navigation and API request timeouts.
-- **Environment Variables**: Used for the selected search backend (`external` by default, or optional `google`).
+- **Environment Variables**: Configure Google Custom Search and the External Search API fallback. For direct GET fallback, configure `EXTERNAL_API_URL`, `EXTERNAL_API_KEY`, and `EXTERNAL_API_MODEL`.
 
 ---
 

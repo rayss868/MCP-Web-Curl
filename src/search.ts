@@ -20,14 +20,23 @@ export interface GoogleSearchOptions {
   region?: string;
 }
 
-export async function googleSearch(query: string, opts: GoogleSearchOptions = {}): Promise<GoogleResult[]> {
-  if (process.env.SEARCH_PROVIDER === 'google') return googleCustomSearch(query, opts);
+class GoogleSearchLimitError extends Error {}
 
+export async function googleSearch(query: string, opts: GoogleSearchOptions = {}): Promise<GoogleResult[]> {
+  try {
+    return await googleCustomSearch(query, opts);
+  } catch (error) {
+    if (!(error instanceof GoogleSearchLimitError)) throw error;
+    return externalSearch(query, opts);
+  }
+}
+
+async function externalSearch(query: string, opts: GoogleSearchOptions): Promise<GoogleResult[]> {
   const apiKey = process.env.SEARCH_API_KEY;
   const endpoint = process.env.SEARCH_BASE_URL;
   const model = process.env.SEARCH_MODEL;
   if (!endpoint || !apiKey || !model) {
-    throw new Error('SEARCH_BASE_URL, SEARCH_MODEL, and SEARCH_API_KEY must be configured');
+    throw new Error('SEARCH_BASE_URL, SEARCH_MODEL, and SEARCH_API_KEY must be configured for Google Search fallback');
   }
 
   const response = await fetch(endpoint, {
@@ -68,7 +77,15 @@ async function googleCustomSearch(query: string, opts: GoogleSearchOptions): Pro
   if (opts.dateRestrict) url.searchParams.set('dateRestrict', opts.dateRestrict);
 
   const response = await fetch(url.toString());
-  if (!response.ok) throw new Error(`Google Search error: ${response.status} ${response.statusText}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as any;
+    const reasons = data.error?.errors?.map((item: any) => item.reason) || [];
+    const message = data.error?.message || '';
+    if (response.status === 429 || (response.status === 403 && (/quota|rate.?limit|dailylimitexceeded/i.test(message) || reasons.some((reason: string) => /quota|rate.?limit|dailylimitexceeded/i.test(reason))))) {
+      throw new GoogleSearchLimitError(`Google Search limit reached: ${response.status}`);
+    }
+    throw new Error(`Google Search error: ${response.status} ${response.statusText}`);
+  }
   const data = await response.json() as any;
   return (data.items || []).map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet }));
 }

@@ -38,7 +38,7 @@ export interface FetchApiResponse {
   responseTimeMs: number; // Add response time in milliseconds
 }
 
-const fetchWebFallback = async (url: string, signal: AbortSignal): Promise<Response> => {
+const fetchWebFallback = async (url: string, timeout: number): Promise<Response> => {
   const endpoint = process.env.EXTERNAL_API_URL;
   const apiKey = process.env.EXTERNAL_API_KEY;
   const model = process.env.EXTERNAL_API_MODEL;
@@ -46,24 +46,30 @@ const fetchWebFallback = async (url: string, signal: AbortSignal): Promise<Respo
     throw new Error('EXTERNAL_API_URL, EXTERNAL_API_KEY, and EXTERNAL_API_MODEL are required for web fetch fallback');
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model, url, format: 'markdown', max_characters: 0 }),
-    signal,
-  });
-  if (!response.ok) throw new Error(`External web fetch failed with status ${response.status}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, url, format: 'markdown', max_characters: 0 }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`External web fetch failed with status ${response.status}`);
 
-  const result = await response.json();
-  const content = result.content;
-  if (typeof content !== 'string') throw new Error('External web fetch response has no content');
-  return new Response(content, {
-    status: 200,
-    headers: { 'Content-Type': 'text/markdown' },
-  });
+    const result = await response.json();
+    const content = result.content;
+    if (typeof content !== 'string') throw new Error('External web fetch response has no content');
+    return new Response(content, {
+      status: 200,
+      headers: { 'Content-Type': 'text/markdown' },
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 // Function to make the API request
@@ -95,19 +101,18 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
 
     let response: Response;
     if (method === 'GET') {
+      let directResponse: Response | undefined;
       try {
-        response = await fetch(url, options);
-        if (!response.ok) {
-          response = await fetchWebFallback(url, controller.signal);
-        }
-      } catch (error) {
-        if (controller.signal.aborted) throw error;
-        response = await fetchWebFallback(url, controller.signal);
+        directResponse = await fetch(url, options);
+      } catch {
+        directResponse = undefined;
       }
+      clearTimeout(timeoutId);
+      response = directResponse?.ok ? directResponse : await fetchWebFallback(url, timeout);
     } else {
       response = await fetch(url, options);
+      clearTimeout(timeoutId);
     }
-    clearTimeout(timeoutId);
 
     const endTime = performance.now(); // End time measurement
     const responseTimeMs = endTime - startTime; // Calculate response time
