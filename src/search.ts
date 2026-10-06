@@ -23,11 +23,22 @@ export interface GoogleSearchOptions {
 class GoogleSearchLimitError extends Error {}
 
 export async function googleSearch(query: string, opts: GoogleSearchOptions = {}): Promise<GoogleResult[]> {
+  // SEARCH_PROVIDER=external -> the external search API is tried first (e.g. a
+  // self-hosted router); default / google -> Google Custom Search first. If the
+  // primary backend fails for ANY reason (quota, invalid key, network), fall
+  // through to the other one and only surface an error when both fail.
+  const provider = (process.env.SEARCH_PROVIDER || 'google').trim().toLowerCase();
+  const externalFirst = provider === 'external';
+  const primary = externalFirst ? externalSearch : googleCustomSearch;
+  const secondary = externalFirst ? googleCustomSearch : externalSearch;
   try {
-    return await googleCustomSearch(query, opts);
-  } catch (error) {
-    if (!(error instanceof GoogleSearchLimitError)) throw error;
-    return externalSearch(query, opts);
+    return await primary(query, opts);
+  } catch (primaryError) {
+    try {
+      return await secondary(query, opts);
+    } catch {
+      throw primaryError;
+    }
   }
 }
 
