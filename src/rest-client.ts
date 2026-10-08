@@ -38,7 +38,7 @@ export interface FetchApiResponse {
   responseTimeMs: number; // Add response time in milliseconds
 }
 
-const fetchWebFallback = async (url: string, timeout: number): Promise<Response> => {
+export const fetchWebFallback = async (url: string, timeout: number): Promise<Response> => {
   const endpoint = process.env.EXTERNAL_API_URL;
   const apiKey = process.env.EXTERNAL_API_KEY;
   const model = process.env.EXTERNAL_API_MODEL;
@@ -62,8 +62,16 @@ const fetchWebFallback = async (url: string, timeout: number): Promise<Response>
 
     const result = await response.json();
     const content = result.content;
-    if (typeof content !== 'string') throw new Error('External web fetch response has no content');
-    return new Response(content, {
+    // Shape 1: content is a plain string. Shape 2: content is an object
+    // { format, text } (jina-reader style). Both are accepted.
+    const text =
+      typeof content === 'string'
+        ? content
+        : content && typeof content.text === 'string'
+          ? content.text
+          : undefined;
+    if (text === undefined) throw new Error('External web fetch response has no content');
+    return new Response(text, {
       status: 200,
       headers: { 'Content-Type': 'text/markdown' },
     });
