@@ -22,7 +22,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { PDFParse } = require('pdf-parse');
 import mammoth from 'mammoth';
-import { fetchApi, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
+import { fetchApi, fetchWebFallback, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
 import { runExtract } from './extract.js';
 import { runCrawl } from './crawl.js';
 import { runResearch } from './research.js';
@@ -835,17 +835,41 @@ class WebCurlServer {
             ? destinationFolder
             : path.resolve(PROJECT_ROOT, destinationFolder);
           if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
-          
-          const response = await fetch(url);
-          if (!response.ok) throw new Error(`Failed to fetch file: ${response.statusText}`);
-          
+
+          // Direct fetch first with a hard timeout; on any failure (blocked
+          // 429/403, 5xx, network error, timeout) fall back to the external
+          // fetch API — same policy as extract/crawl/fetch_api.
+          const timeoutMs = 60000;
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          let response: Response;
+          let viaFallback = false;
+          try {
+            response = await fetch(url, { signal: controller.signal });
+            if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          } catch (directError: any) {
+            clearTimeout(timer);
+            try {
+              response = await fetchWebFallback(url, timeoutMs);
+              viaFallback = true;
+            } catch (fallbackError: any) {
+              throw new Error(
+                `Failed to fetch file (${directError?.message || directError}); API fallback failed (${fallbackError?.message || fallbackError})`
+              );
+            }
+          }
+          clearTimeout(timer);
+
           const finalFilename = filename || path.basename(new URL(url).pathname) || 'downloaded_file';
           const filePath = path.join(destPath, finalFilename);
-          
+
           const fileStream = fs.createWriteStream(filePath);
           await pipeline(Readable.fromWeb(response.body as any), fileStream);
 
-          return { content: [{ type: 'text', text: `File downloaded to: ${filePath}` }] };
+          const note = viaFallback
+            ? ' (via API fallback — content is markdown/text, not raw HTML)'
+            : '';
+          return { content: [{ type: 'text', text: `File downloaded to: ${filePath}${note}` }] };
         } else if (toolName === 'research') {
           const result = await runResearch(args as any);
           return { content: [{ type: 'text', text: result.report }] };
