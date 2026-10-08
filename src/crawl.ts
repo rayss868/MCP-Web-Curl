@@ -1,4 +1,5 @@
 import { fetchHtml } from './fetch-html.js';
+import { normalizeFallbackFormat } from './rest-client.js';
 
 export interface CrawlArgs {
   startUrl: string;
@@ -10,6 +11,8 @@ export interface CrawlArgs {
   delayMs?: number; // politeness delay between requests
   timeoutMs?: number;
   maxDepth?: number;
+  /** Format requested from the external API fallback (default html so blocked pages still yield links). */
+  format?: 'html' | 'markdown' | 'text';
 }
 
 export interface CrawlPage {
@@ -49,7 +52,9 @@ export async function runCrawl(args: CrawlArgs): Promise<CrawlResult> {
     delayMs = 250,
     timeoutMs = 30000,
     maxDepth = 3,
+    format,
   } = args;
+  const fallbackFormat = normalizeFallbackFormat(format, 'html');
 
   const started = Date.now();
 
@@ -81,7 +86,7 @@ export async function runCrawl(args: CrawlArgs): Promise<CrawlResult> {
 
   // Strategy: map → single page, return its link list
   if (strategy === 'map') {
-    const page = await visit(startUrl, 0, timeoutMs);
+    const page = await visit(startUrl, 0, timeoutMs, fallbackFormat);
     return {
       startUrl,
       strategy,
@@ -124,7 +129,7 @@ export async function runCrawl(args: CrawlArgs): Promise<CrawlResult> {
     if (!passes(item.url) && item.depth > 0) continue;
     visited.add(item.url);
 
-    const page = await visit(item.url, item.depth, timeoutMs);
+    const page = await visit(item.url, item.depth, timeoutMs, fallbackFormat);
     if (page.status === 'ok') {
       pages.push(page);
       if (page.depth < maxDepth) {
@@ -152,9 +157,9 @@ export async function runCrawl(args: CrawlArgs): Promise<CrawlResult> {
   };
 }
 
-async function visit(url: string, depth: number, timeoutMs: number): Promise<CrawlPage & { links: string[] }> {
+async function visit(url: string, depth: number, timeoutMs: number, fallbackFormat: 'html' | 'markdown' | 'text'): Promise<CrawlPage & { links: string[] }> {
   try {
-    const { url: finalUrl, dom } = await fetchHtml(url, { timeoutMs, maxBytes: 4_000_000 });
+    const { url: finalUrl, dom } = await fetchHtml(url, { timeoutMs, maxBytes: 4_000_000, fallbackFormat });
     const doc = dom.window.document;
     const links = Array.from(doc.querySelectorAll('a[href]'))
       .map((a) => {

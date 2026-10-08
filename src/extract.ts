@@ -1,5 +1,6 @@
 import { Readability } from '@mozilla/readability';
 import { fetchHtml } from './fetch-html.js';
+import { normalizeFallbackFormat } from './rest-client.js';
 
 export interface ExtractSelector {
   name: string;
@@ -16,6 +17,8 @@ export interface ExtractArgs {
   includeMeta?: boolean;
   includeMainContent?: boolean;
   maxTextChars?: number;
+  /** Format requested from the external API fallback (default markdown). */
+  format?: 'html' | 'markdown' | 'text';
 }
 
 /**
@@ -40,7 +43,10 @@ export async function runExtract(args: ExtractArgs): Promise<any> {
     maxTextChars = 20000,
   } = args;
 
-  const { url: finalUrl, html, contentType, dom } = await fetchHtml(url, { requireHtml: false });
+  const { url: finalUrl, html, contentType, dom } = await fetchHtml(url, {
+    requireHtml: false,
+    fallbackFormat: normalizeFallbackFormat(args.format, 'markdown'),
+  });
   const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml+xml');
 
   if (!isHtml) {

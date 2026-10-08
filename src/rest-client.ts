@@ -1,6 +1,26 @@
 
 import 'dotenv/config';
 
+/** Content format requested from the external fetch API fallback. */
+export type FallbackFormat = 'html' | 'markdown' | 'text';
+
+const FALLBACK_FORMATS: FallbackFormat[] = ['html', 'markdown', 'text'];
+
+const FALLBACK_CONTENT_TYPE: Record<FallbackFormat, string> = {
+  html: 'text/html',
+  markdown: 'text/markdown',
+  text: 'text/plain',
+};
+
+/** Validate a caller-supplied format, falling back to the default. Throws on unknown values. */
+export const normalizeFallbackFormat = (value: unknown, defaultValue: FallbackFormat): FallbackFormat => {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (typeof value === 'string' && (FALLBACK_FORMATS as string[]).includes(value)) {
+    return value as FallbackFormat;
+  }
+  throw new Error(`Invalid format: ${JSON.stringify(value)}. Valid values: ${FALLBACK_FORMATS.join(', ')}`);
+};
+
 // Define the interface for the fetch_api tool arguments
 export interface FetchApiArgs {
   url: string;
@@ -10,6 +30,7 @@ export interface FetchApiArgs {
   timeout?: number; // Timeout in milliseconds
   limit: number; // Maximum number of characters to return in the response body (required)
   redirect?: 'follow' | 'error' | 'manual'; // Redirect mode
+  format?: FallbackFormat; // Content format for the external API fallback (GET only)
 }
 
 // Validate the arguments for fetch_api tool
@@ -23,6 +44,7 @@ export const isValidFetchApiArgs = (args: any): args is FetchApiArgs => {
   if (args.timeout !== undefined && typeof args.timeout !== 'number') return false;
   if (args.limit === undefined || typeof args.limit !== 'number') return false; // limit is required and must be a number
   if (args.redirect !== undefined && !['follow', 'error', 'manual'].includes(args.redirect)) return false;
+  if (args.format !== undefined && !FALLBACK_FORMATS.includes(args.format)) return false;
   return true;
 };
 
@@ -38,7 +60,11 @@ export interface FetchApiResponse {
   responseTimeMs: number; // Add response time in milliseconds
 }
 
-export const fetchWebFallback = async (url: string, timeout: number): Promise<Response> => {
+export const fetchWebFallback = async (
+  url: string,
+  timeout: number,
+  format: FallbackFormat = 'markdown'
+): Promise<Response> => {
   const endpoint = process.env.EXTERNAL_API_URL;
   const apiKey = process.env.EXTERNAL_API_KEY;
   const model = process.env.EXTERNAL_API_MODEL;
@@ -55,7 +81,7 @@ export const fetchWebFallback = async (url: string, timeout: number): Promise<Re
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, url, format: 'markdown', max_characters: 0 }),
+      body: JSON.stringify({ model, url, format, max_characters: 0 }),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`External web fetch failed with status ${response.status}`);
@@ -73,7 +99,7 @@ export const fetchWebFallback = async (url: string, timeout: number): Promise<Re
     if (text === undefined) throw new Error('External web fetch response has no content');
     return new Response(text, {
       status: 200,
-      headers: { 'Content-Type': 'text/markdown' },
+      headers: { 'Content-Type': FALLBACK_CONTENT_TYPE[format] },
     });
   } finally {
     clearTimeout(timeoutId);
@@ -116,7 +142,7 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
         directResponse = undefined;
       }
       clearTimeout(timeoutId);
-      response = directResponse?.ok ? directResponse : await fetchWebFallback(url, timeout);
+      response = directResponse?.ok ? directResponse : await fetchWebFallback(url, timeout, args.format);
     } else {
       response = await fetch(url, options);
       clearTimeout(timeoutId);

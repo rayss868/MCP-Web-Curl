@@ -22,7 +22,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { PDFParse } = require('pdf-parse');
 import mammoth from 'mammoth';
-import { fetchApi, fetchWebFallback, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
+import { fetchApi, fetchWebFallback, normalizeFallbackFormat, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
 import { runExtract } from './extract.js';
 import { runCrawl } from './crawl.js';
 import { runResearch } from './research.js';
@@ -411,7 +411,8 @@ class WebCurlServer {
               body: { type: 'string', description: 'Optional request body.' },
               timeout: { type: 'number', description: 'Request timeout in milliseconds (default 60000).' },
               redirect: { type: 'string', enum: ['follow', 'error', 'manual'], description: 'Redirect handling mode (default follow).' },
-              limit: { type: 'number', description: 'Maximum number of characters to return from the response body.' }
+              limit: { type: 'number', description: 'Maximum number of characters to return from the response body.' },
+              format: { type: 'string', enum: ['html', 'markdown', 'text'], description: 'Content format requested from the external API fallback when the direct GET fails (default markdown).' }
             },
             required: ['url', 'method', 'limit']
           }
@@ -424,7 +425,8 @@ class WebCurlServer {
             properties: {
               url: { type: 'string', description: 'The URL of the file to download.' },
               destinationFolder: { type: 'string', description: 'The local directory where the file should be saved.' },
-              filename: { type: 'string', description: 'Optional custom filename. If omitted, the name is derived from the URL.' }
+              filename: { type: 'string', description: 'Optional custom filename. If omitted, the name is derived from the URL.' },
+              format: { type: 'string', enum: ['html', 'markdown', 'text'], description: 'Content format requested from the external API fallback when the direct fetch fails (default markdown).' }
             },
             required: ['url', 'destinationFolder']
           }
@@ -488,7 +490,8 @@ class WebCurlServer {
               includeJsonLd: { type: 'boolean', description: 'Parse JSON-LD blocks (default true).' },
               includeMeta: { type: 'boolean', description: 'Collect meta tags (default true).' },
               includeMainContent: { type: 'boolean', description: 'Extract main text via Readability (default true).' },
-              maxTextChars: { type: 'number', description: 'Cap for main content characters (default 20000).' }
+              maxTextChars: { type: 'number', description: 'Cap for main content characters (default 20000).' },
+              format: { type: 'string', enum: ['html', 'markdown', 'text'], description: 'Content format requested from the external API fallback when the page is blocked (default markdown; use html so selectors/tables/JSON-LD still parse).' }
             },
             required: ['url']
           }
@@ -508,7 +511,8 @@ class WebCurlServer {
               sameDomain: { type: 'boolean', description: 'Restrict to the start host (default true).' },
               delayMs: { type: 'number', description: 'Politeness delay between requests (default 250).' },
               timeoutMs: { type: 'number', description: 'Per-page fetch timeout (default 30000).' },
-              maxDepth: { type: 'number', description: 'Max link depth (default 3).' }
+              maxDepth: { type: 'number', description: 'Max link depth (default 3).' },
+              format: { type: 'string', enum: ['html', 'markdown', 'text'], description: 'Content format requested from the external API fallback for blocked pages (default html so links stay followable).' }
             },
             required: ['startUrl']
           }
@@ -829,7 +833,9 @@ class WebCurlServer {
             }]
           };
         } else if (toolName === 'download_file') {
-          const { url, destinationFolder, filename } = args as any;
+          const { url, destinationFolder, filename, format } = args as any;
+          // Validate the fallback format up front so bad values fail fast.
+          const fallbackFormat = normalizeFallbackFormat(format, 'markdown');
           // Resolve relative paths against PROJECT_ROOT to keep data central
           const destPath = path.isAbsolute(destinationFolder)
             ? destinationFolder
@@ -850,7 +856,7 @@ class WebCurlServer {
           } catch (directError: any) {
             clearTimeout(timer);
             try {
-              response = await fetchWebFallback(url, timeoutMs);
+              response = await fetchWebFallback(url, timeoutMs, fallbackFormat);
               viaFallback = true;
             } catch (fallbackError: any) {
               throw new Error(
@@ -866,9 +872,7 @@ class WebCurlServer {
           const fileStream = fs.createWriteStream(filePath);
           await pipeline(Readable.fromWeb(response.body as any), fileStream);
 
-          const note = viaFallback
-            ? ' (via API fallback — content is markdown/text, not raw HTML)'
-            : '';
+          const note = viaFallback ? ` (via API fallback, format: ${fallbackFormat})` : '';
           return { content: [{ type: 'text', text: `File downloaded to: ${filePath}${note}` }] };
         } else if (toolName === 'research') {
           const result = await runResearch(args as any);

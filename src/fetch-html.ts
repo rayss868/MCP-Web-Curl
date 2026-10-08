@@ -13,6 +13,8 @@ export interface FetchHtmlOptions {
   timeoutMs?: number;
   maxBytes?: number;
   requireHtml?: boolean;
+  /** Format requested from the external API fallback (default markdown). */
+  fallbackFormat?: 'html' | 'markdown' | 'text';
 }
 
 /**
@@ -39,7 +41,7 @@ export async function fetchHtml(url: string, opts: FetchHtmlOptions = {}): Promi
     // fall back to the external fetch API, same policy as fetch_api.
     clearTimeout(timer);
     try {
-      res = await fetchWebFallback(url, timeoutMs);
+      res = await fetchWebFallback(url, timeoutMs, opts.fallbackFormat);
       fromFallback = true;
     } catch (fallbackError: any) {
       throw new Error(
