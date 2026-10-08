@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom';
-import { fetchWebFallback } from './rest-client.js';
+import { fetchWebFallback, withRetries } from './rest-client.js';
 
 export interface FetchedPage {
   url: string; // Final URL after redirects
@@ -34,8 +34,13 @@ export async function fetchHtml(url: string, opts: FetchHtmlOptions = {}): Promi
   let res: Response;
   let fromFallback = false;
   try {
-    res = await fetch(url, { signal: controller.signal, redirect: 'follow' });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
+    // One retry for transient failures (network blip, 5xx, timeout); final
+    // statuses like 403 throw immediately and go to the API fallback.
+    res = await withRetries(async () => {
+      const r = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} for ${url}`);
+      return r;
+    }, 2, 1000);
   } catch (directError: any) {
     // Direct fetch failed (blocked, HTTP error, network error, timeout) →
     // fall back to the external fetch API, same policy as fetch_api.

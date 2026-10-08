@@ -22,7 +22,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { PDFParse } = require('pdf-parse');
 import mammoth from 'mammoth';
-import { fetchApi, fetchWebFallback, normalizeFallbackFormat, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
+import { fetchApi, fetchWebFallback, normalizeFallbackFormat, withRetries, FetchApiArgs, isValidFetchApiArgs } from './rest-client.js';
 import { runExtract } from './extract.js';
 import { runCrawl } from './crawl.js';
 import { runResearch } from './research.js';
@@ -851,8 +851,13 @@ class WebCurlServer {
           let response: Response;
           let viaFallback = false;
           try {
-            response = await fetch(url, { signal: controller.signal });
-            if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+            // One retry for transient failures (network blip, 5xx, timeout);
+            // final statuses go straight to the API fallback.
+            response = await withRetries(async () => {
+              const r = await fetch(url, { signal: controller.signal });
+              if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+              return r;
+            }, 2, 1000);
           } catch (directError: any) {
             clearTimeout(timer);
             try {

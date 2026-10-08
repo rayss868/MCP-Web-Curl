@@ -21,6 +21,39 @@ export const normalizeFallbackFormat = (value: unknown, defaultValue: FallbackFo
   throw new Error(`Invalid format: ${JSON.stringify(value)}. Valid values: ${FALLBACK_FORMATS.join(', ')}`);
 };
 
+/**
+ * Errors worth retrying: timeouts/aborts, connection blips, and transient
+ * HTTP statuses (5xx, 408, 429). Other 4xx are final.
+ */
+export const isTransientError = (e: any): boolean => {
+  const msg = String(e?.message || e || '');
+  if (e?.name === 'AbortError') return true;
+  if (/\bHTTP (5\d\d|408|429)\b/.test(msg)) return true;
+  if (/\bstatus (5\d\d|408|429)\b/.test(msg)) return true;
+  if (/fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|network error/i.test(msg)) {
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Run `fn` up to `attempts` times, backing off between tries (base delay,
+ * then 3x). Stops immediately on non-transient errors.
+ */
+export const withRetries = async <T>(fn: () => Promise<T>, attempts: number, baseDelayMs: number): Promise<T> => {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      if (i === attempts - 1 || !isTransientError(e)) throw e;
+      await new Promise((r) => setTimeout(r, i === 0 ? baseDelayMs : baseDelayMs * 3));
+    }
+  }
+  throw lastErr;
+};
+
 // Define the interface for the fetch_api tool arguments
 export interface FetchApiArgs {
   url: string;
@@ -72,37 +105,49 @@ export const fetchWebFallback = async (
     throw new Error('EXTERNAL_API_URL, EXTERNAL_API_KEY, and EXTERNAL_API_MODEL are required for web fetch fallback');
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  let attempts = 0;
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, url, format, max_characters: 0 }),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`External web fetch failed with status ${response.status}`);
+    return await withRetries(async () => {
+      attempts++;
+      // Fresh controller per attempt so a previous timeout never poisons the next try.
+      const attemptController = new AbortController();
+      const timeoutId = setTimeout(() => attemptController.abort(), timeout);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({ model, url, format, max_characters: 0 }),
+          signal: attemptController.signal,
+        });
+        if (!response.ok) throw new Error(`External web fetch failed with status ${response.status}`);
 
-    const result = await response.json();
-    const content = result.content;
-    // Shape 1: content is a plain string. Shape 2: content is an object
-    // { format, text } (jina-reader style). Both are accepted.
-    const text =
-      typeof content === 'string'
-        ? content
-        : content && typeof content.text === 'string'
-          ? content.text
-          : undefined;
-    if (text === undefined) throw new Error('External web fetch response has no content');
-    return new Response(text, {
-      status: 200,
-      headers: { 'Content-Type': FALLBACK_CONTENT_TYPE[format] },
-    });
-  } finally {
-    clearTimeout(timeoutId);
+        const result = await response.json();
+        const content = result.content;
+        // Shape 1: content is a plain string. Shape 2: content is an object
+        // { format, text } (jina-reader style). Both are accepted.
+        const text =
+          typeof content === 'string'
+            ? content
+            : content && typeof content.text === 'string'
+              ? content.text
+              : undefined;
+        if (text === undefined) throw new Error('External web fetch response has no content');
+        return new Response(text, {
+          status: 200,
+          headers: { 'Content-Type': FALLBACK_CONTENT_TYPE[format] },
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }, 3, 1000);
+  } catch (e: any) {
+    if (attempts > 1) {
+      throw new Error(`External web fetch failed after ${attempts} attempts (${e?.message || e})`);
+    }
+    throw e;
   }
 };
 
@@ -137,7 +182,13 @@ export const fetchApi = async (args: FetchApiArgs): Promise<FetchApiResponse> =>
     if (method === 'GET') {
       let directResponse: Response | undefined;
       try {
-        directResponse = await fetch(url, options);
+        // One retry for transient failures; final statuses (403, 404, ...)
+        // throw straight through to the API fallback below.
+        directResponse = await withRetries(async () => {
+          const r = await fetch(url, options);
+          if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} for ${url}`);
+          return r;
+        }, 2, 1000);
       } catch {
         directResponse = undefined;
       }
