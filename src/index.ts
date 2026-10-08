@@ -443,13 +443,18 @@ class WebCurlServer {
         {
           name: 'research',
           description:
-            'Research pipeline: decomposes a question into sub-queries, runs them in parallel via Google search, dedupes results, and produces a synthesized markdown report where every source has a numbered citation. Use for multi-faceted questions.',
+            'Research pipeline: decomposes a question into sub-queries, runs them in parallel via search, dedupes results, fetches the top sources (with external API fallback on blocks/errors), and produces a markdown report with numbered citations plus the real content of each fetched source. Use for multi-faceted questions.',
           inputSchema: {
             type: 'object',
             properties: {
               query: { type: 'string', description: 'The research question.' },
               maxSubQueries: { type: 'number', description: 'Max sub-queries to decompose into (default 4).' },
               maxResultsPerQuery: { type: 'number', description: 'Results to keep per sub-query (default 5).' },
+              fetchSources: {
+                type: 'number',
+                description:
+                  'How many top sources to fetch and include their real content (range 5-10, default 5; 10 recommended for deeper reports).',
+              },
               language: { type: 'string', description: 'Optional language code, e.g. id or en.' },
               site: { type: 'string', description: 'Optional site restriction (e.g. wikipedia.org).' },
               dateRestrict: { type: 'string', description: 'Optional freshness filter, e.g. d1, m6, y1.' }
